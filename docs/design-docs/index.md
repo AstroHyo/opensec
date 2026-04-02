@@ -1,6 +1,7 @@
 # Design Docs Index
 
 - [`./core-beliefs.md`](./core-beliefs.md)
+- [`./openclaw-personal-control-plane.md`](./openclaw-personal-control-plane.md)
 - [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md)
 - [`../DESIGN.md`](../DESIGN.md)
 
