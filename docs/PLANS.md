@@ -9,6 +9,7 @@ Execution plans live under `docs/exec-plans/`.
 Current active plan:
 
 - [`./exec-plans/active/2026-04-02-llm-curation-upgrade.md`](./exec-plans/active/2026-04-02-llm-curation-upgrade.md)
+- [`./exec-plans/active/2026-04-02-vps-openclaw-rollout.md`](./exec-plans/active/2026-04-02-vps-openclaw-rollout.md)
 
 Rule of thumb:
 
