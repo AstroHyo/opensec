@@ -132,6 +132,15 @@ Recommended role of the main agent:
 - news assistant
 - scheduler coordinator
 
+Bootstrap assets in this repo:
+
+- `openclaw.personal.example.jsonc`
+- `scripts/setup-personal-workspace.sh`
+- `workspace-template/`
+- `skills/ai_news_brief/`
+- `skills/repo_ops/`
+- `skills/system_ops/`
+
 ### Phase 2: Add A Second Agent Only If Needed
 
 Later, add a separate `news` or `automation` agent only if:
@@ -238,6 +247,10 @@ This is a good starting shape for `~/.openclaw/openclaw.json`:
   }
 }
 ```
+
+Repository helper:
+
+- copy from `openclaw.personal.example.jsonc`
 
 Notes:
 
@@ -369,6 +382,11 @@ Do this:
 - OpenSec as one project/skill inside that plane
 - Telegram DM as the single private front door
 - one gateway, one main agent, one workspace
+
+Concrete repo helpers:
+
+- scaffold the workspace with `scripts/setup-personal-workspace.sh`
+- use `skills/repo_ops` and `skills/system_ops` for non-news DM tasks
 
 Do not do this:
 

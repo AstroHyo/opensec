@@ -1,0 +1,50 @@
+{
+  // Copy to ~/.openclaw/openclaw.json and replace placeholder values.
+  agents: {
+    defaults: {
+      workspace: "/srv/openclaw/workspace-personal",
+      skipBootstrap: true,
+      userTimezone: "America/New_York",
+      model: {
+        primary: "anthropic/claude-sonnet-4-6",
+        fallbacks: ["openai/gpt-5.2"],
+      },
+    },
+  },
+
+  commands: {
+    native: "auto",
+    text: true,
+    bash: false,
+  },
+
+  channels: {
+    telegram: {
+      enabled: true,
+      botToken: "123456789:replace-me",
+      dmPolicy: "allowlist",
+      allowFrom: ["123456789"],
+      defaultTo: "123456789",
+      linkPreview: false,
+      streaming: "partial",
+      commands: {
+        native: "auto",
+        nativeSkills: false,
+      },
+      execApprovals: {
+        enabled: true,
+        approvers: ["123456789"],
+        target: "dm",
+      },
+    },
+  },
+
+  cron: {
+    enabled: true,
+    sessionRetention: "24h",
+    runLog: {
+      maxBytes: "2mb",
+      keepLines: 2000,
+    },
+  },
+}

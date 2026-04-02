@@ -18,20 +18,30 @@ This skill runs the local deterministic AI news briefing bot for a single Telegr
 
 ## Rules
 - Do not browse the web directly for discovery.
-- Always prefer the deterministic local pipeline in `./news-bot`.
+- Always prefer the deterministic local pipeline in the OpenSec repo.
 - Use exec to run the local scripts.
 - Return the script output as-is unless the user explicitly asks for explanation.
 - If the script fails because setup is incomplete, reply with the shortest actionable TODO.
 
+## Repo path convention
+
+Prefer this path in the personal workspace:
+
+- `./projects/opensec-ai-news-brief/news-bot`
+
+If the current workspace is already the OpenSec repo root, you may use:
+
+- `./news-bot`
+
 ## Commands
 - AM digest:
-  - `pnpm --dir ./news-bot run digest:am`
+  - `pnpm --dir ./projects/opensec-ai-news-brief/news-bot run digest:am`
 - PM digest:
-  - `pnpm --dir ./news-bot run digest:pm`
+  - `pnpm --dir ./projects/opensec-ai-news-brief/news-bot run digest:pm`
 - Manual follow-up:
-  - `pnpm --dir ./news-bot run followup -- "<original user message>"`
+  - `pnpm --dir ./projects/opensec-ai-news-brief/news-bot run followup -- "<original user message>"`
 - Fetch only:
-  - `pnpm --dir ./news-bot run fetch`
+  - `pnpm --dir ./projects/opensec-ai-news-brief/news-bot run fetch`
 
 ## Intent routing
 - `brief now`: run the digest matching current ET time. Before 15:00 ET use AM, otherwise PM.

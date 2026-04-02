@@ -3,8 +3,15 @@ set -euo pipefail
 
 OPENCLAW_BIN="${OPENCLAW_BIN:-openclaw}"
 TELEGRAM_USER_ID="${TELEGRAM_USER_ID:-${NEWS_BOT_TELEGRAM_USER_ID:-}}"
-WORKSPACE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-BOT_ROOT="$WORKSPACE_ROOT/news-bot"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+if [[ "$(basename "$(dirname "$REPO_ROOT")")" == "projects" ]]; then
+  WORKSPACE_ROOT="$(cd "$REPO_ROOT/../.." && pwd)"
+else
+  WORKSPACE_ROOT="$REPO_ROOT"
+fi
+
+BOT_ROOT="$REPO_ROOT/news-bot"
 
 if [[ -z "$TELEGRAM_USER_ID" ]]; then
   echo "TELEGRAM_USER_ID (or NEWS_BOT_TELEGRAM_USER_ID) is required."

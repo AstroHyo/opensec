@@ -133,6 +133,14 @@ This keeps:
 - OpenClaw cron prompts simple
 - future updates predictable
 
+Repo helpers for this plan:
+
+- `scripts/setup-personal-workspace.sh`
+- `openclaw.personal.example.jsonc`
+- `workspace-template/`
+- `skills/repo_ops/`
+- `skills/system_ops/`
+
 ## Rollout Plan
 
 ### Phase 1: Provision The VPS
@@ -181,6 +189,14 @@ Approve:
 
 - `better-sqlite3`
 - `esbuild`
+
+If you want the recommended personal workspace layout directly:
+
+```bash
+git clone https://github.com/AstroHyo/opensec-ai-news-brief.git /srv/openclaw/workspace-personal/projects/opensec-ai-news-brief
+cd /srv/openclaw/workspace-personal/projects/opensec-ai-news-brief
+./scripts/setup-personal-workspace.sh
+```
 
 ## Phase 3: Configure App Secrets
 
@@ -253,6 +269,12 @@ Requirements:
 - OpenClaw must be started with the OpenSec workspace available
 - the workspace must include `skills/ai_news_brief/SKILL.md`
 - the skill must call the app via `exec`
+
+Recommended config bootstrap:
+
+```bash
+cp /srv/openclaw/workspace-personal/projects/opensec-ai-news-brief/openclaw.personal.example.jsonc ~/.openclaw/openclaw.json
+```
 
 Practical rule:
 
