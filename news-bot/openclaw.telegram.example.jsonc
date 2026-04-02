@@ -1,0 +1,34 @@
+{
+  // Merge this into your existing OpenClaw config.
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "botToken": "123456789:replace-me",
+      "dmPolicy": "allowlist",
+      "allowFrom": ["123456789"],
+      "linkPreview": false,
+      "customCommands": [
+        {
+          "command": "brief",
+          "description": "Run the AI news brief"
+        },
+        {
+          "command": "radar",
+          "description": "Show repo radar"
+        },
+        {
+          "command": "openai",
+          "description": "Show OpenAI-only items"
+        }
+      ]
+    }
+  },
+  "cron": {
+    "enabled": true,
+    "sessionRetention": "24h",
+    "runLog": {
+      "maxBytes": "2mb",
+      "keepLines": 2000
+    }
+  }
+}

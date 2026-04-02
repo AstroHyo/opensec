@@ -1,0 +1,154 @@
+import { DateTime } from "luxon";
+import { loadConfig } from "../config.js";
+import { NewsDatabase } from "../db.js";
+import type { DigestEntry } from "../types.js";
+import { runDigestFlow } from "./runDigest.js";
+
+export async function runFollowupCommand(input: {
+  command: string;
+  nowIso?: string;
+  dbPathOverride?: string;
+}): Promise<string> {
+  const command = normalizeCommand(input.command);
+  const config = loadConfig(process.cwd());
+  const db = new NewsDatabase(input.dbPathOverride ?? config.dbPath);
+  const now = input.nowIso
+    ? DateTime.fromISO(input.nowIso, { zone: config.timezone }).setZone(config.timezone)
+    : DateTime.now().setZone(config.timezone);
+
+  try {
+    if (command === "brief now") {
+      return await renderFreshDigest(now.hour < 15 ? "am" : "pm", input);
+    }
+    if (command === "am brief now") {
+      return await renderFreshDigest("am", input);
+    }
+    if (command === "pm brief now") {
+      return await renderFreshDigest("pm", input);
+    }
+    if (command === "openai only") {
+      return renderSubset("OpenAI only", ensureLatestDigestItems(db), (item) => Boolean(item.openaiCategory));
+    }
+    if (command === "repo radar") {
+      return renderSubset("Repo Radar", ensureLatestDigestItems(db), (item) => item.repoStarsToday != null);
+    }
+    if (command === "today themes") {
+      const digest = db.getLatestDigest();
+      return digest?.themes.length
+        ? `[Today themes]\n\n${digest.themes.map((theme) => `- ${theme}`).join("\n")}`
+        : "최근 digest theme 정보가 없습니다. 먼저 `brief now`를 실행하세요.";
+    }
+
+    const expandMatch = command.match(/^expand\s+(\d+)$/);
+    if (expandMatch) {
+      const item = db.getFollowupContext(Number.parseInt(expandMatch[1], 10));
+      return item ? renderExpandedItem(item) : notFound(expandMatch[1]);
+    }
+
+    const sourceMatch = command.match(/^show sources for\s+(\d+)$/);
+    if (sourceMatch) {
+      const item = db.getFollowupContext(Number.parseInt(sourceMatch[1], 10));
+      return item ? renderSources(item) : notFound(sourceMatch[1]);
+    }
+
+    const whyMatch = command.match(/^why important\s+(\d+)$/);
+    if (whyMatch) {
+      const item = db.getFollowupContext(Number.parseInt(whyMatch[1], 10));
+      return item ? renderWhyImportant(item) : notFound(whyMatch[1]);
+    }
+
+    return [
+      "지원 명령:",
+      "- brief now",
+      "- am brief now",
+      "- pm brief now",
+      "- openai only",
+      "- repo radar",
+      "- expand N",
+      "- show sources for N",
+      "- why important N",
+      "- today themes"
+    ].join("\n");
+  } finally {
+    db.close();
+  }
+}
+
+function normalizeCommand(command: string): string {
+  return command.trim().replace(/^\//, "").toLowerCase();
+}
+
+function ensureLatestDigestItems(db: NewsDatabase): DigestEntry[] {
+  const latest = db.getLatestDigest();
+  return latest?.items ?? [];
+}
+
+function renderSubset(title: string, items: DigestEntry[], predicate: (item: DigestEntry) => boolean): string {
+  const selected = items.filter(predicate);
+  if (selected.length === 0) {
+    return `${title}로 보여줄 저장된 항목이 없습니다. 먼저 \`brief now\`를 실행하세요.`;
+  }
+
+  return [
+    `[${title}]`,
+    "",
+    ...selected.map((item) =>
+      [
+        `[${item.number}] ${item.title}`,
+        `한줄 요약: ${item.summary}`,
+        `출처: ${item.sourceLabel}`,
+        `링크: ${item.primaryUrl}`
+      ].join("\n")
+    )
+  ].join("\n\n");
+}
+
+function renderExpandedItem(item: DigestEntry): string {
+  return [
+    `[Expand ${item.number}] ${item.title}`,
+    "",
+    `한줄 요약: ${item.summary}`,
+    `왜 중요한지: ${item.whyImportant}`,
+    item.uncertaintyNotes?.length ? `불확실성 메모: ${item.uncertaintyNotes.join(" / ")}` : null,
+    `점수 근거: ${item.scoreReasons.join(" / ")}`,
+    `설명: ${item.description ?? "추가 설명 없음"}`,
+    `주요 링크: ${item.primaryUrl}`
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join("\n");
+}
+
+function renderSources(item: DigestEntry): string {
+  return [
+    `[Sources for ${item.number}] ${item.title}`,
+    "",
+    ...item.sourceLinks.map((source, index) => `${index + 1}. ${source.label}\n${source.url}`)
+  ].join("\n\n");
+}
+
+function renderWhyImportant(item: DigestEntry): string {
+  return [
+    `[Why important ${item.number}] ${item.title}`,
+    "",
+    item.whyImportant,
+    "",
+    `점수 근거: ${item.scoreReasons.join(" / ")}`
+  ].join("\n");
+}
+
+function notFound(index: string): string {
+  return `최근 digest에서 ${index}번 항목을 찾지 못했습니다.`;
+}
+
+async function renderFreshDigest(
+  mode: "am" | "pm",
+  input: { nowIso?: string; dbPathOverride?: string }
+): Promise<string> {
+  const { digest, db } = await runDigestFlow({
+    mode,
+    nowIso: input.nowIso,
+    dbPathOverride: input.dbPathOverride
+  });
+  db.close();
+  return digest.bodyText;
+}

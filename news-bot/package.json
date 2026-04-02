@@ -1,0 +1,39 @@
+{
+  "name": "opensec-ai-news-brief",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Deterministic personal AI news briefing bot for OpenClaw + Telegram",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "digest": "tsx src/index.ts digest",
+    "digest:am": "tsx src/index.ts digest --mode am",
+    "digest:pm": "tsx src/index.ts digest --mode pm",
+    "followup": "tsx src/index.ts followup",
+    "fetch": "tsx src/index.ts fetch",
+    "test": "vitest run",
+    "dry-run:am": "bash ./scripts/dry-run-am.sh",
+    "dry-run:pm": "bash ./scripts/dry-run-pm.sh"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.10.0",
+    "cheerio": "^1.0.0",
+    "dotenv": "^16.4.7",
+    "luxon": "^3.6.1",
+    "rss-parser": "^3.13.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/luxon": "^3.6.2",
+    "@types/node": "^22.13.14",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^3.1.1"
+  },
+  "packageManager": "pnpm@10.8.1+sha512.c50088ba998c67b8ca8c99df8a5e02fd2ae2e2b29aaf238feaa9e124248d3f48f9fb6db2424949ff901cffbb5e0f0cc1ad6aedb602cd29450751d11c35023677"
+}

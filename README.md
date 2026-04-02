@@ -1,0 +1,35 @@
+# OpenSec AI News Brief
+
+OpenSec AI News Brief is a deterministic, single-user AI news briefing system built for Telegram delivery and OpenClaw orchestration.
+
+The repository is split into two main parts:
+
+- [`/Users/ASTROHYO/Desktop/OpenSec/news-bot`](./news-bot): the actual news pipeline
+- [`/Users/ASTROHYO/Desktop/OpenSec/skills/ai_news_brief/SKILL.md`](./skills/ai_news_brief/SKILL.md): the OpenClaw workspace skill that runs the pipeline
+
+## What It Does
+
+- fetches curated AI and developer-tooling sources
+- normalizes and deduplicates items into SQLite
+- ranks them with explicit scoring rules
+- renders Korean Telegram-ready digests
+- supports follow-up commands from stored digest context
+- is designed to support optional LLM enrichment without losing deterministic fallbacks
+
+## Repository Map
+
+```text
+OpenSec/
+├── AGENTS.md
+├── ARCHITECTURE.md
+├── docs/
+├── news-bot/
+└── skills/
+```
+
+## Start Here
+
+- Product and system overview: [`/Users/ASTROHYO/Desktop/OpenSec/ARCHITECTURE.md`](./ARCHITECTURE.md)
+- Working conventions: [`/Users/ASTROHYO/Desktop/OpenSec/AGENTS.md`](./AGENTS.md)
+- LLM upgrade plan: [`/Users/ASTROHYO/Desktop/OpenSec/docs/exec-plans/active/2026-04-02-llm-curation-upgrade.md`](./docs/exec-plans/active/2026-04-02-llm-curation-upgrade.md)
+- Local app setup: [`/Users/ASTROHYO/Desktop/OpenSec/news-bot/README.md`](./news-bot/README.md)
