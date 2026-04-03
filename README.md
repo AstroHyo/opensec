@@ -1,89 +1,136 @@
+<div align="center">
+
 # OpenSec
 
-OpenSec는 Telegram DM과 OpenClaw 오케스트레이션을 전제로 만든 개인용 AI 뉴스 브리핑 시스템입니다.
+**A deterministic AI news briefing system for Telegram and OpenClaw**
 
-이 저장소의 핵심 아이디어는 단순합니다.
+Curated sources in. Ranked Korean digests out. Optional LLM enrichment on top of a local, evidence-preserving core.
 
-- 뉴스 수집과 후보 선정은 deterministic pipeline이 맡습니다.
-- LLM은 선택적 enrichment, explanation, research layer로만 붙습니다.
-- 모델이 없어도 usable한 digest를 계속 보낼 수 있어야 합니다.
+[Korean README](./README_KR.md) • [Architecture](./ARCHITECTURE.md) • [Product Engine](./news-bot/README.md) • [DB Schema](./docs/generated/db-schema.md)
 
-현재 저장소는 두 가지를 함께 제공합니다.
-
-1. `news-bot/`: 실제 뉴스 브리핑 엔진
-2. `skills/` + `workspace-template/`: OpenClaw 개인 워크스페이스와 Telegram DM 운영을 위한 자산
+</div>
 
 ## Why OpenSec
 
-이 프로젝트는 "모델이 그때그때 웹을 돌아다니며 알아서 고르는 뉴스 봇"을 지향하지 않습니다.
+OpenSec is built around a simple rule:
 
-대신 아래 원칙을 지킵니다.
+> The daily digest should come from deterministic retrieval and scoring, not from unconstrained model browsing.
 
-- curated source만 수집합니다.
-- canonical URL, source label, source links, score reasons 같은 evidence를 보존합니다.
-- official source가 commentary보다 우선합니다.
-- silence is better than low-signal filler를 기본값으로 둡니다.
-- daily digest는 live browsing이 없어도 계속 생성되어야 합니다.
+That design choice gives the system a few properties that are easy to lose in AI-heavy products:
 
-이 구조 덕분에 재현 가능성, 디버깅 가능성, 로컬 fallback, 후속 질의의 근거 추적성을 유지할 수 있습니다.
+- reproducible ranking
+- debuggable local state
+- preserved evidence and source attribution
+- safe non-LLM fallbacks
+- follow-up answers grounded in stored context
 
-## Current Status
+If an LLM is available, it improves explanation quality. If it is not, the digest should still ship.
 
-지금 기준으로 이미 구현된 범위는 다음과 같습니다.
+## Highlights
 
-- curated source fetch
-- normalization, canonicalization, dedupe
-- SQLite 기반 상태 저장
-- deterministic scoring과 resend suppression
-- 한국어 Telegram digest 렌더링
-- 저장된 digest context 기반 follow-up command
-- 선택적 LLM item enrichment와 theme synthesis
-- `ask` 기반 stored-evidence explanation
-- `research` 기반 opt-in live research with citations
-- OpenClaw 개인 워크스페이스 부트스트랩과 Telegram DM skill 세트
+| Capability | What it means |
+| --- | --- |
+| Deterministic daily digest | Curated sources, normalization, dedupe, SQLite state, explicit scoring |
+| Evidence preserved by default | Canonical URL, source labels, source links, and score reasons stay attached |
+| Korean Telegram output | Digest text is optimized for concise Telegram delivery |
+| Optional LLM layer | Item enrichment, theme synthesis, ask-mode explanation, and opt-in research |
+| Private control plane support | Includes OpenClaw workspace assets for Telegram DM based operations |
 
-아직 완전히 구현되지 않았거나 앞으로 확장될 여지가 있는 부분도 있습니다.
+## How It Works
 
-- LLM rerank calibration
-- richer Telegram inline UX
-- 운영 자동화와 VPS rollout polishing
-
-## Architecture
-
-현재 시스템의 큰 흐름은 아래와 같습니다.
-
-```text
-Curated Sources
-  -> source adapters
-  -> normalization + canonicalization
-  -> dedupe + merge
-  -> SQLite state
-  -> deterministic scoring
-  -> shortlist selection
-  -> optional LLM enrichment
-  -> Korean digest rendering
-  -> follow-up commands / Telegram delivery
+```mermaid
+flowchart LR
+    A["Curated sources"] --> B["Source adapters"]
+    B --> C["Normalize and canonicalize"]
+    C --> D["Deduplicate and merge"]
+    D --> E[("SQLite state")]
+    E --> F["Deterministic scoring"]
+    F --> G["Digest shortlist"]
+    G --> H["Telegram digest renderer"]
+    G --> I["Optional LLM enrichment"]
+    I --> H
+    H --> J["Telegram or shell output"]
+    E --> K["Stored follow-up context"]
+    K --> L["Deterministic follow-up"]
+    K --> M["Ask mode"]
+    K --> N["Research mode"]
 ```
 
-조금 더 구체적으로 보면:
+The important boundary is the placement of the LLM layer:
 
-1. `news-bot/src/sources/`가 curated source를 fetch합니다.
-2. `news-bot/src/util/`과 `news-bot/src/db.ts`가 normalize, dedupe, persistence를 담당합니다.
-3. `news-bot/src/scoring.ts`가 explicit rule 기반으로 후보를 정렬합니다.
-4. `news-bot/src/digest/`가 digest item과 Telegram text를 조립합니다.
-5. `news-bot/src/llm/`은 optional하게 summary/theme/research를 보강합니다.
-6. `news-bot/src/commands/`가 digest 실행과 follow-up UX를 제공합니다.
+- retrieval stays deterministic
+- candidate generation stays bounded
+- enrichment happens downstream of scoring
+- delivery still works when enrichment is unavailable
 
-중요한 boundary는 변하지 않습니다.
+## System Architecture
 
-- daily digest는 deterministic retrieval과 scoring이 system of record입니다.
-- LLM은 이미 뽑힌 bounded candidate set 위에서만 동작해야 합니다.
-- article content는 untrusted input으로 취급합니다.
-- enrichment failure는 digest delivery를 막으면 안 됩니다.
+```mermaid
+flowchart TB
+    subgraph Sources["Curated inputs"]
+        S1["GeekNews RSS"]
+        S2["OpenAI News RSS"]
+        S3["GitHub Trending"]
+    end
 
-## Supported Sources And Outputs
+    subgraph Engine["news-bot/"]
+        SA["src/sources/"]
+        U["src/util/"]
+        DB["src/db.ts + SQLite"]
+        SC["src/scoring.ts"]
+        DG["src/digest/"]
+        CM["src/commands/"]
+        LLM["src/llm/ (optional)"]
+    end
 
-현재 기본 source 어댑터는 아래를 다룹니다.
+    subgraph Control["Telegram / OpenClaw layer"]
+        SK["skills/"]
+        WS["workspace-template/"]
+        OC["OpenClaw orchestration"]
+        TG["Telegram DM"]
+    end
+
+    S1 --> SA
+    S2 --> SA
+    S3 --> SA
+    SA --> U
+    U --> DB
+    DB --> SC
+    SC --> DG
+    SC --> LLM
+    LLM --> DG
+    DB --> CM
+    DG --> CM
+    CM --> OC
+    SK --> OC
+    WS --> OC
+    OC --> TG
+```
+
+## What Is Implemented Today
+
+OpenSec already includes:
+
+- curated source ingestion
+- normalization, canonicalization, and deduplication
+- SQLite-backed local state
+- deterministic ranking and resend suppression
+- Korean digest rendering
+- digest follow-up commands over stored context
+- optional LLM item enrichment and theme synthesis
+- `ask` follow-ups over stored evidence
+- `research` follow-ups with bounded live search and cited links
+- OpenClaw workspace bootstrap assets for private Telegram use
+
+Still planned or evolving:
+
+- LLM rerank calibration
+- richer Telegram inline actions
+- further VPS and automation hardening
+
+## Supported Sources
+
+The default adapters currently cover:
 
 - GeekNews RSS
 - OpenAI News RSS
@@ -94,48 +141,35 @@ Curated Sources
   - javascript
   - rust
 
-현재 제공하는 주요 출력은 아래와 같습니다.
+## Follow-up Modes
 
-- AM digest
-- PM digest
-- `openai only`
-- `repo radar`
-- `expand N`
-- `show sources for N`
-- `why important N`
-- `today themes`
-- `ask <질문>`
-- `research <질문>`
+| Mode | Example | Notes |
+| --- | --- | --- |
+| Deterministic | `openai only` | Filters the latest digest context to OpenAI-related items |
+| Deterministic | `repo radar` | Shows repo-oriented items from stored digest context |
+| Deterministic | `today themes` | Returns the latest stored theme bullets |
+| Deterministic | `expand 2` | Uses the latest stored digest only |
+| Deterministic | `show sources for 2` | Returns preserved evidence links |
+| Deterministic | `why important 2` | Explains score reasoning from saved context |
+| Ask | `ask summarize only today's OpenAI items` | Uses stored digest evidence, with LLM help when available |
+| Research | `research look deeper into item 2` | Explicit opt-in live research with cited links |
 
 ## Repository Map
 
 | Path | Purpose |
 | --- | --- |
-| `news-bot/` | 뉴스 수집, 저장, 점수화, digest 생성, follow-up 처리까지 포함한 product engine |
-| `skills/` | OpenClaw에서 재사용할 workspace skill 세트 |
-| `docs/design-docs/` | 장기적인 설계 원칙과 architecture belief |
-| `docs/product-specs/` | 사용자 관점의 동작 명세 |
-| `docs/exec-plans/` | 진행 중이거나 완료된 실행 계획 |
-| `docs/generated/` | DB schema 같은 파생 문서 |
-| `scripts/` | 워크스페이스 bootstrap 및 운영 스크립트 |
-| `workspace-template/` | 개인 OpenClaw workspace의 기본 scaffold |
-
-루트 구조를 간단히 보면 다음과 같습니다.
-
-```text
-OpenSec/
-├── AGENTS.md
-├── ARCHITECTURE.md
-├── docs/
-├── news-bot/
-├── scripts/
-├── skills/
-└── workspace-template/
-```
+| `news-bot/` | Product engine for ingestion, state, scoring, digest rendering, and follow-ups |
+| `skills/` | OpenClaw-facing workspace skills |
+| `docs/design-docs/` | Long-lived design beliefs and architecture notes |
+| `docs/product-specs/` | User-visible behavior specs |
+| `docs/exec-plans/` | Active and completed execution plans |
+| `docs/generated/` | Derived references such as the SQLite schema |
+| `scripts/` | Workspace bootstrap and operations scripts |
+| `workspace-template/` | Base personal workspace scaffold for OpenClaw |
 
 ## Quick Start
 
-### 1. News Bot만 먼저 실행해보기
+### 1. Run the news engine locally
 
 ```bash
 cd ./news-bot
@@ -147,14 +181,34 @@ pnpm digest:am
 pnpm followup -- "expand 1"
 ```
 
-`pnpm approve-builds`에서는 보통 `better-sqlite3`와 `esbuild`를 허용하면 됩니다.
+If `pnpm approve-builds` prompts for native packages, approve `better-sqlite3` and `esbuild`.
 
-필수 환경 변수:
+Useful local commands:
+
+```bash
+pnpm --dir ./news-bot fetch
+pnpm --dir ./news-bot digest:am
+pnpm --dir ./news-bot digest:pm
+pnpm --dir ./news-bot dry-run:am
+pnpm --dir ./news-bot dry-run:pm
+pnpm --dir ./news-bot followup -- "openai only"
+pnpm --dir ./news-bot followup -- "repo radar"
+pnpm --dir ./news-bot followup -- "today themes"
+pnpm --dir ./news-bot followup -- "show sources for 2"
+pnpm --dir ./news-bot followup -- "ask summarize today's OpenAI items"
+pnpm --dir ./news-bot followup -- "research look deeper into item 2"
+```
+
+### 2. Configure environment variables
+
+For local CLI use, the defaults are enough to get started.
+
+For real Telegram and OpenClaw delivery, fill in:
 
 - `NEWS_BOT_TELEGRAM_USER_ID`
 - `TELEGRAM_BOT_TOKEN`
 
-선택 환경 변수:
+Optional LLM variables:
 
 - `OPENAI_API_KEY`
 - `NEWS_BOT_LLM_ENABLED`
@@ -163,70 +217,47 @@ pnpm followup -- "expand 1"
 - `NEWS_BOT_LLM_MODEL_THEMES`
 - `NEWS_BOT_LLM_MODEL_RESEARCH`
 
-빠른 검증용 명령:
+### 3. Turn it into a private Telegram control plane
 
-```bash
-pnpm --dir ./news-bot test
-pnpm --dir ./news-bot dry-run:am
-pnpm --dir ./news-bot dry-run:pm
-```
+This repository also ships the assets needed to run OpenSec inside a private OpenClaw workspace.
 
-### 2. OpenClaw 개인 워크스페이스까지 붙이기
+Key files:
 
-Telegram DM을 개인 control plane처럼 쓰고 싶다면 아래 자산을 함께 사용하면 됩니다.
+- [`openclaw.personal.example.jsonc`](./openclaw.personal.example.jsonc)
+- [`scripts/setup-personal-workspace.sh`](./scripts/setup-personal-workspace.sh)
+- [`workspace-template/`](./workspace-template)
+- [`skills/ai_news_brief/`](./skills/ai_news_brief)
+- [`skills/code_ops/`](./skills/code_ops)
+- [`skills/repo_ops/`](./skills/repo_ops)
+- [`skills/system_ops/`](./skills/system_ops)
 
-- `openclaw.personal.example.jsonc`
-- `scripts/setup-personal-workspace.sh`
-- `workspace-template/`
-- `skills/ai_news_brief/`
-- `skills/code_ops/`
-- `skills/repo_ops/`
-- `skills/system_ops/`
-
-기본 bootstrap:
+Bootstrap the workspace with:
 
 ```bash
 bash ./scripts/setup-personal-workspace.sh
 ```
 
-그 다음:
+Then:
 
-1. `openclaw.personal.example.jsonc`를 기반으로 OpenClaw 설정을 복사합니다.
-2. Telegram bot token과 owner user ID를 채웁니다.
-3. OpenClaw gateway를 붙입니다.
-4. OpenClaw가 이 repo의 `skills/`를 읽을 수 있는 workspace에서 실행되도록 맞춥니다.
+1. copy the example OpenClaw config
+2. fill in your Telegram bot token and owner ID
+3. start the OpenClaw gateway
+4. point OpenClaw at the personal workspace that includes these skills
 
-## Core Commands
+## Design Principles
 
-`news-bot/package.json` 기준으로 자주 쓰는 명령은 아래와 같습니다.
+The non-negotiables for this repository are straightforward:
 
-```bash
-pnpm --dir ./news-bot fetch
-pnpm --dir ./news-bot digest:am
-pnpm --dir ./news-bot digest:pm
-pnpm --dir ./news-bot followup -- "show sources for 2"
-pnpm --dir ./news-bot followup -- "ask 오늘 OpenAI 뉴스만 다시 요약해줘"
-pnpm --dir ./news-bot followup -- "research 2번 뉴스 관련 최신 공식 반응까지 찾아줘"
-```
+- do not make daily digest generation depend on freeform live web search
+- keep LLMs downstream of deterministic retrieval
+- always preserve a non-LLM fallback path
+- preserve original evidence and scoring context
+- prefer official sources over commentary
+- silence is better than filler
 
-## Who This Repo Is For
+## Documentation Guide
 
-이 저장소는 특히 아래 사람들에게 맞습니다.
-
-- 개인용 AI 뉴스 digest를 Telegram으로 받고 싶은 운영자
-- OpenClaw를 "개인 DM control plane"처럼 쓰고 싶은 사용자
-- deterministic retrieval과 optional LLM enrichment를 함께 설계하고 싶은 기여자
-- 뉴스 큐레이션보다 evidence preservation과 explainability를 더 중요하게 보는 팀
-
-반대로 아래와는 거리가 있습니다.
-
-- unconstrained autonomous browsing bot을 바로 만들고 싶은 경우
-- multi-tenant SaaS newsroom 제품을 당장 만들려는 경우
-- source curation 없이 모델이 알아서 선택하게 두고 싶은 경우
-
-## Docs Guide
-
-처음 읽는 순서는 아래를 권장합니다.
+Recommended reading order:
 
 1. [`ARCHITECTURE.md`](./ARCHITECTURE.md)
 2. [`news-bot/README.md`](./news-bot/README.md)
@@ -235,26 +266,24 @@ pnpm --dir ./news-bot followup -- "research 2번 뉴스 관련 최신 공식 반
 5. [`docs/product-specs/telegram-news-followup-and-research.md`](./docs/product-specs/telegram-news-followup-and-research.md)
 6. [`docs/design-docs/openclaw-personal-control-plane.md`](./docs/design-docs/openclaw-personal-control-plane.md)
 
-현재 진행 중인 주요 계획은 `docs/exec-plans/active/` 아래에 있습니다.
+Current execution work lives under [`docs/exec-plans/active/`](./docs/exec-plans/active).
 
 ## Contributing
 
-컨트리뷰션 전에 꼭 공유하고 싶은 working agreement는 아래와 같습니다.
+If you want to contribute, this is the shortest accurate mental model:
 
-- daily digest generation을 freeform live web search에 의존하게 만들지 않습니다.
-- LLM은 deterministic retrieval 위에 올라가는 optional layer로 유지합니다.
-- non-LLM fallback path를 반드시 남깁니다.
-- canonical URL, source labels, source link list, score reasons를 보존합니다.
-- official sources를 commentary보다 우선합니다.
+- `news-bot/` is the product engine
+- `skills/` and `workspace-template/` are the operating interface
+- `docs/` is the durable memory for future contributors
 
-의미 있는 architecture change라면 아래까지 같이 업데이트해야 합니다.
+For meaningful architecture changes, update all of the following:
 
-1. `ARCHITECTURE.md`
-2. `docs/exec-plans/active/` 아래 execution plan
-3. `docs/generated/db-schema.md`
-4. ranking, rendering, follow-up 변화에 대한 테스트
+1. [`ARCHITECTURE.md`](./ARCHITECTURE.md)
+2. the relevant plan under [`docs/exec-plans/active/`](./docs/exec-plans/active)
+3. [`docs/generated/db-schema.md`](./docs/generated/db-schema.md) if schema changed
+4. tests for ranking, rendering, or follow-up behavior
 
-기여 전후에 추천하는 검증 명령:
+Recommended validation:
 
 ```bash
 pnpm --dir ./news-bot test
@@ -262,16 +291,18 @@ pnpm --dir ./news-bot digest:am
 pnpm --dir ./news-bot digest:pm
 ```
 
-## Project Direction
+## Who This Repo Is For
 
-OpenSec는 뉴스 digest bot 하나로 끝나는 저장소가 아니라, "deterministic information pipeline + personal Telegram control plane"이라는 더 큰 방향을 향하고 있습니다.
+OpenSec is a strong fit if you want:
 
-즉:
+- a private AI news digest for one owner
+- Telegram as the front door
+- deterministic retrieval with optional LLM explanation
+- preserved source evidence instead of opaque agent behavior
+- a repo that doubles as both product code and operations scaffold
 
-- `news-bot/`은 제품 엔진이고,
-- `skills/`와 `workspace-template/`은 운영 인터페이스이며,
-- `docs/`는 앞으로의 판단 기준을 보존하는 장기 기억입니다.
+It is not optimized for:
 
-이 저장소를 사용하든 기여하든, 가장 중요한 기준은 같습니다.
-
-정확한 source grounding을 잃지 않으면서도, 점점 더 쓰기 쉬운 개인용 AI workflow로 발전시키는 것.
+- fully autonomous browsing-first agents
+- multi-tenant SaaS productization
+- model-only ranking with no stored evidence trail
