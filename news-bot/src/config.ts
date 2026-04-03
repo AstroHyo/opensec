@@ -23,6 +23,7 @@ const envSchema = z.object({
     .transform((value) => value === "1" || value === "true"),
   NEWS_BOT_LLM_MODEL_SUMMARY: z.string().default("gpt-4.1-mini"),
   NEWS_BOT_LLM_MODEL_THEMES: z.string().default("gpt-4.1"),
+  NEWS_BOT_LLM_MODEL_RESEARCH: z.string().default("gpt-5.4-mini"),
   NEWS_BOT_LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
   NEWS_BOT_LLM_MAX_ITEMS_AM: z.coerce.number().int().positive().default(12),
   NEWS_BOT_LLM_MAX_ITEMS_PM: z.coerce.number().int().positive().default(20)
@@ -43,6 +44,7 @@ export interface AppConfig {
     rerankEnabled: boolean;
     summaryModel: string;
     themesModel: string;
+    researchModel: string;
     timeoutMs: number;
     maxItemsAm: number;
     maxItemsPm: number;
@@ -74,6 +76,7 @@ export function loadConfig(cwd = process.cwd()): AppConfig {
       rerankEnabled: Boolean(env.OPENAI_API_KEY && env.NEWS_BOT_LLM_RERANK_ENABLED),
       summaryModel: env.NEWS_BOT_LLM_MODEL_SUMMARY,
       themesModel: env.NEWS_BOT_LLM_MODEL_THEMES,
+      researchModel: env.NEWS_BOT_LLM_MODEL_RESEARCH,
       timeoutMs: env.NEWS_BOT_LLM_TIMEOUT_MS,
       maxItemsAm: env.NEWS_BOT_LLM_MAX_ITEMS_AM,
       maxItemsPm: env.NEWS_BOT_LLM_MAX_ITEMS_PM

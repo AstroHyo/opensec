@@ -29,6 +29,6 @@
 ## Operational Checks
 
 - `pnpm --dir ./news-bot test`
-- `pnpm --dir ./news-bot run digest:am`
-- `pnpm --dir ./news-bot run digest:pm`
+- `pnpm --dir ./news-bot digest:am`
+- `pnpm --dir ./news-bot digest:pm`
 - dry-run fixture commands before major ranking or rendering changes

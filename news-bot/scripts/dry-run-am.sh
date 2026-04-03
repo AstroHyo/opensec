@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-pnpm --dir "$ROOT" run digest -- \
+pnpm --dir "$ROOT" digest -- \
   --mode am \
   --db ./data/dry-run-am.sqlite \
   --seed-fixture ./fixtures/sample-items.json \

@@ -27,5 +27,6 @@ You are the operator for a private personal workspace.
 ## Project Routing
 
 - Use `ai_news_brief` for news digests and follow-ups.
-- Use `repo_ops` for repo inspection, pull/test/diff workflows, and coding task coordination.
+- Use `code_ops` for branch work, code changes, targeted validation, and concise implementation summaries.
+- Use `repo_ops` for repo inspection, pull/test/diff workflows, and read-mostly repo questions.
 - Use `system_ops` for server health, logs, disk, memory, service checks, and safe ops guidance.

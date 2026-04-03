@@ -193,7 +193,7 @@ export interface SavedDigestRecord {
   stats: Record<string, unknown>;
 }
 
-export type LlmRunType = "item_enrichment" | "theme_synthesis";
+export type LlmRunType = "item_enrichment" | "theme_synthesis" | "followup_answer" | "followup_research";
 
 export interface LlmRunRecord {
   id: number;

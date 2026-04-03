@@ -15,6 +15,8 @@ This skill runs the local deterministic AI news briefing bot for a single Telegr
   - `show sources for N`
   - `why important N`
   - `today themes`
+  - `ask <질문>`
+  - `research <질문>`
 
 ## Rules
 - Do not browse the web directly for discovery.
@@ -35,13 +37,13 @@ If the current workspace is already the OpenSec repo root, you may use:
 
 ## Commands
 - AM digest:
-  - `pnpm --dir ./projects/opensec-ai-news-brief/news-bot run digest:am`
+  - `pnpm --dir ./projects/opensec-ai-news-brief/news-bot digest:am`
 - PM digest:
-  - `pnpm --dir ./projects/opensec-ai-news-brief/news-bot run digest:pm`
+  - `pnpm --dir ./projects/opensec-ai-news-brief/news-bot digest:pm`
 - Manual follow-up:
-  - `pnpm --dir ./projects/opensec-ai-news-brief/news-bot run followup -- "<original user message>"`
+  - `pnpm --dir ./projects/opensec-ai-news-brief/news-bot followup "<original user message>"`
 - Fetch only:
-  - `pnpm --dir ./projects/opensec-ai-news-brief/news-bot run fetch`
+  - `pnpm --dir ./projects/opensec-ai-news-brief/news-bot fetch`
 
 ## Intent routing
 - `brief now`: run the digest matching current ET time. Before 15:00 ET use AM, otherwise PM.
@@ -53,3 +55,5 @@ If the current workspace is already the OpenSec repo root, you may use:
 - `show sources for N`: list stored source links for item `N`.
 - `why important N`: list stored scoring reasons for item `N`.
 - `today themes`: show the latest stored theme bullets.
+- `ask <질문>`: answer from stored digest evidence with LLM help when available, and deterministic fallback otherwise.
+- `research <질문>`: do opt-in live LLM web research starting from stored digest context. If live research is unavailable, fall back to stored digest evidence and say so clearly.

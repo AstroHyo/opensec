@@ -80,6 +80,7 @@ Instead, the personal agent should be able to:
 ├── memory/
 ├── skills/
 │   ├── ai_news_brief/
+│   ├── code_ops/
 │   ├── repo_ops/
 │   ├── system_ops/
 │   └── inbox_ops/
@@ -138,6 +139,7 @@ Bootstrap assets in this repo:
 - `scripts/setup-personal-workspace.sh`
 - `workspace-template/`
 - `skills/ai_news_brief/`
+- `skills/code_ops/`
 - `skills/repo_ops/`
 - `skills/system_ops/`
 
@@ -301,6 +303,11 @@ Recommended initial skill set:
 - `ai_news_brief`
   - digest generation
   - follow-up on saved digest context
+- `code_ops`
+  - create task branches
+  - inspect and edit code
+  - run targeted validation
+  - summarize implementation work
 - `repo_ops`
   - open repo
   - run tests
@@ -331,6 +338,12 @@ In other words:
 - approval flow protects risky actions
 
 This gives you "Codex from DM" behavior in practice, even though OpenClaw itself is not trying to replace a dedicated local IDE loop.
+
+Examples of good Telegram DM asks:
+
+- `create a branch in opensec-ai-news-brief and wire Telegram coding support`
+- `fix the failing test in repo-a and show me what changed`
+- `inspect the auth bug in repo-b, patch it, and run the narrowest relevant test`
 
 ## Nodes: When To Add Them
 
@@ -386,7 +399,7 @@ Do this:
 Concrete repo helpers:
 
 - scaffold the workspace with `scripts/setup-personal-workspace.sh`
-- use `skills/repo_ops` and `skills/system_ops` for non-news DM tasks
+- use `skills/code_ops`, `skills/repo_ops`, and `skills/system_ops` for non-news DM tasks
 
 Do not do this:
 

@@ -34,6 +34,7 @@ sync_skill_dir() {
 }
 
 sync_skill_dir "$REPO_ROOT/skills/ai_news_brief" "$WORKSPACE_ROOT/skills/ai_news_brief"
+sync_skill_dir "$REPO_ROOT/skills/code_ops" "$WORKSPACE_ROOT/skills/code_ops"
 sync_skill_dir "$REPO_ROOT/skills/repo_ops" "$WORKSPACE_ROOT/skills/repo_ops"
 sync_skill_dir "$REPO_ROOT/skills/system_ops" "$WORKSPACE_ROOT/skills/system_ops"
 

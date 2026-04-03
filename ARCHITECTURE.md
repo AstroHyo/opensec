@@ -4,6 +4,8 @@
 
 OpenSec is a Telegram-first personal AI news briefing system with a deterministic local core.
 
+This repository also provides workspace scaffolding and skills so OpenClaw can handle private Telegram DM coding and repo tasks around the news system.
+
 Today, the product works without any LLM dependency:
 
 - curated source fetch
@@ -94,8 +96,19 @@ LLM usage should be added in layers, in this order:
 2. theme synthesis across selected items
 3. richer follow-up answers from stored evidence
 4. optional rerank calibration on a bounded candidate set
+5. explicit post-digest research mode with bounded live search when the user asks for it
 
 These layers must remain downstream of deterministic fetch and candidate generation.
+
+## Planned Follow-up Modes
+
+The future Telegram follow-up UX should separate:
+
+- deterministic follow-up over stored digest context
+- bounded LLM explanation over stored digest context
+- explicit opt-in live research after the digest has already been generated
+
+The daily digest itself should remain deterministic even if research mode is later added.
 
 ## Target Future Architecture
 
@@ -120,5 +133,6 @@ Sources
 
 - `AGENTS.md`
 - `docs/design-docs/core-beliefs.md`
+- `docs/design-docs/openclaw-personal-control-plane.md`
 - `docs/exec-plans/active/2026-04-02-llm-curation-upgrade.md`
 - `docs/generated/db-schema.md`

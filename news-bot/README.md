@@ -37,10 +37,14 @@ Deterministic single-user AI news briefing bot for a Linux VPS. It fetches AI/ne
   - `show sources for N`
   - `why important N`
   - `today themes`
+  - `ask <질문>`
+  - `research <질문>`
 - Optionally enriches selected digest items with OpenAI for:
   - more natural Korean summaries
   - sharper `왜 중요한지`
   - better day-level theme bullets
+  - post-digest `ask` answers over stored evidence
+  - opt-in `research` answers with live web search and cited links
 
 ## Project layout
 ```text
@@ -115,6 +119,10 @@ skills/
    ./scripts/dry-run-am.sh
    ./scripts/dry-run-pm.sh
    ```
+5. Optional LLM follow-up tuning:
+   - `NEWS_BOT_LLM_MODEL_SUMMARY`
+   - `NEWS_BOT_LLM_MODEL_THEMES`
+   - `NEWS_BOT_LLM_MODEL_RESEARCH`
 
 ## Local commands
 - Fetch latest source state only:
@@ -132,6 +140,14 @@ skills/
 - Ask a follow-up against stored context:
   ```bash
   pnpm run followup -- "show sources for 2"
+  ```
+- Ask for a richer stored-evidence explanation:
+  ```bash
+  pnpm run followup -- "ask 오늘 OpenAI 뉴스만 우리 관점으로 다시 요약해줘"
+  ```
+- Run opt-in live research with citations:
+  ```bash
+  pnpm run followup -- "research 2번 뉴스 관련 최신 공식 반응까지 찾아줘"
   ```
 
 ## OpenClaw Telegram config
@@ -167,7 +183,7 @@ Notes:
 The helper script wraps these exact commands:
 
 ```bash
-openclaw cron add \
+  openclaw cron add \
   --name "AI News Brief AM" \
   --cron "0 10 * * *" \
   --tz "America/New_York" \
@@ -177,7 +193,7 @@ openclaw cron add \
   --announce \
   --channel telegram \
   --to "$TELEGRAM_USER_ID" \
-  --message "Use the ai_news_brief skill in the workspace at /opt/ai-news-brief. Run \`pnpm --dir /opt/ai-news-brief/news-bot run digest:am\` via exec. Return only the script output so it can be sent to Telegram as-is. Do not browse the web manually unless the script fails."
+  --message "Use the ai_news_brief skill in the workspace at /opt/ai-news-brief. Run \`pnpm --dir /opt/ai-news-brief/news-bot digest:am\` via exec. Return only the script output so it can be sent to Telegram as-is. Do not browse the web manually unless the script fails."
 
 openclaw cron add \
   --name "AI News Brief PM" \
@@ -189,7 +205,7 @@ openclaw cron add \
   --announce \
   --channel telegram \
   --to "$TELEGRAM_USER_ID" \
-  --message "Use the ai_news_brief skill in the workspace at /opt/ai-news-brief. Run \`pnpm --dir /opt/ai-news-brief/news-bot run digest:pm\` via exec. Return only the script output so it can be sent to Telegram as-is. Do not browse the web manually unless the script fails."
+  --message "Use the ai_news_brief skill in the workspace at /opt/ai-news-brief. Run \`pnpm --dir /opt/ai-news-brief/news-bot digest:pm\` via exec. Return only the script output so it can be sent to Telegram as-is. Do not browse the web manually unless the script fails."
 ```
 
 Or run:
@@ -215,6 +231,7 @@ TELEGRAM_USER_ID=123456789 ./scripts/install-cron.sh
 - GitHub Trending is filtered for AI/tooling relevance, so novelty repos do not make Repo Radar just because they are popular.
 - The daily digest does not depend on live model discovery.
 - LLM enrichment is optional and runs only after deterministic fetch, dedupe, ranking, and item selection.
+- Live `research` is opt-in and happens only after the digest has already been generated.
 
 ## Dry-run examples
 - AM:

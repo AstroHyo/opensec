@@ -2,6 +2,8 @@
 
 OpenSec AI News Brief is a deterministic, single-user AI news briefing system built for Telegram delivery and OpenClaw orchestration.
 
+The repository also ships personal-workspace assets so the same Telegram DM can handle repo and coding tasks through OpenClaw, not just news digests.
+
 The repository is split into two main parts:
 
 - [`/Users/ASTROHYO/Desktop/OpenSec/news-bot`](./news-bot): the actual news pipeline
@@ -46,5 +48,6 @@ If you want Telegram DM to become your personal AI control plane, use:
 Bundled skills for that setup:
 
 - [`/Users/ASTROHYO/Desktop/OpenSec/skills/ai_news_brief/SKILL.md`](./skills/ai_news_brief/SKILL.md)
+- [`/Users/ASTROHYO/Desktop/OpenSec/skills/code_ops/SKILL.md`](./skills/code_ops/SKILL.md)
 - [`/Users/ASTROHYO/Desktop/OpenSec/skills/repo_ops/SKILL.md`](./skills/repo_ops/SKILL.md)
 - [`/Users/ASTROHYO/Desktop/OpenSec/skills/system_ops/SKILL.md`](./skills/system_ops/SKILL.md)

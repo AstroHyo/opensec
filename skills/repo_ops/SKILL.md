@@ -8,12 +8,13 @@ This skill handles day-to-day repository work inside the personal workspace.
 - Pull latest changes
 - Run tests or lint
 - Summarize a branch or recent commit history
-- Make code changes inside a known repo
 - Answer questions like:
   - `check repo-a status`
   - `pull latest in opensec-ai-news-brief and summarize`
   - `run tests in repo-b`
-  - `fix the failing test in project X`
+  - `what changed on this branch`
+
+For code edits, branch work, and implementation requests, prefer `code_ops`.
 
 ## Default repo convention
 
@@ -51,11 +52,6 @@ If the user names a repo, resolve it there first.
 ### Validate
 
 - run the repo’s relevant test, check, or build command
-
-### Implement
-
-- make the smallest correct change
-- rerun the narrowest useful validation
 
 ## Good outputs
 

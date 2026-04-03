@@ -70,7 +70,7 @@ For any meaningful architecture change:
 
 ```bash
 pnpm --dir ./news-bot test
-pnpm --dir ./news-bot run digest:am
-pnpm --dir ./news-bot run digest:pm
-pnpm --dir ./news-bot run followup -- "repo radar"
+pnpm --dir ./news-bot digest:am
+pnpm --dir ./news-bot digest:pm
+pnpm --dir ./news-bot followup "repo radar"
 ```

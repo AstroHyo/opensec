@@ -106,7 +106,9 @@ VPS
 ├── OpenClaw gateway + cron + Telegram channel
 ├── OpenSec repository
 │   ├── news-bot/
-│   └── skills/ai_news_brief/
+│   └── skills/
+│       ├── ai_news_brief/
+│       └── code_ops/
 └── local state
     ├── SQLite database
     └── OpenClaw config / logs / cron runs
@@ -138,6 +140,7 @@ Repo helpers for this plan:
 - `scripts/setup-personal-workspace.sh`
 - `openclaw.personal.example.jsonc`
 - `workspace-template/`
+- `skills/code_ops/`
 - `skills/repo_ops/`
 - `skills/system_ops/`
 
@@ -372,7 +375,7 @@ openclaw cron add \
   --announce \
   --channel telegram \
   --to "123456789" \
-  --message "Use the ai_news_brief skill in the workspace at /opt/opensec-ai-news-brief. Run \`pnpm --dir /opt/opensec-ai-news-brief/news-bot run digest:am\` via exec. Return only the script output so it can be sent to Telegram as-is. Do not browse the web manually unless the script fails."
+  --message "Use the ai_news_brief skill in the workspace at /opt/opensec-ai-news-brief. Run \`pnpm --dir /opt/opensec-ai-news-brief/news-bot digest:am\` via exec. Return only the script output so it can be sent to Telegram as-is. Do not browse the web manually unless the script fails."
 ```
 
 And:
@@ -388,7 +391,7 @@ openclaw cron add \
   --announce \
   --channel telegram \
   --to "123456789" \
-  --message "Use the ai_news_brief skill in the workspace at /opt/opensec-ai-news-brief. Run \`pnpm --dir /opt/opensec-ai-news-brief/news-bot run digest:pm\` via exec. Return only the script output so it can be sent to Telegram as-is. Do not browse the web manually unless the script fails."
+  --message "Use the ai_news_brief skill in the workspace at /opt/opensec-ai-news-brief. Run \`pnpm --dir /opt/opensec-ai-news-brief/news-bot digest:pm\` via exec. Return only the script output so it can be sent to Telegram as-is. Do not browse the web manually unless the script fails."
 ```
 
 Or use the helper script in the repo:

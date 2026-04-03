@@ -2,6 +2,9 @@ import { DateTime } from "luxon";
 import { loadConfig } from "../config.js";
 import { NewsDatabase } from "../db.js";
 import type { DigestEntry } from "../types.js";
+import { answerAskFollowup } from "./followupAnswer.js";
+import { classifyFollowupIntent } from "./followupIntent.js";
+import { answerResearchFollowup } from "./followupResearch.js";
 import { runDigestFlow } from "./runDigest.js";
 
 export async function runFollowupCommand(input: {
@@ -9,7 +12,8 @@ export async function runFollowupCommand(input: {
   nowIso?: string;
   dbPathOverride?: string;
 }): Promise<string> {
-  const command = normalizeCommand(input.command);
+  const rawCommand = collapseInput(input.command);
+  const command = normalizeCommand(rawCommand);
   const config = loadConfig(process.cwd());
   const db = new NewsDatabase(input.dbPathOverride ?? config.dbPath);
   const now = input.nowIso
@@ -26,35 +30,40 @@ export async function runFollowupCommand(input: {
     if (command === "pm brief now") {
       return await renderFreshDigest("pm", input);
     }
-    if (command === "openai only") {
-      return renderSubset("OpenAI only", ensureLatestDigestItems(db), (item) => Boolean(item.openaiCategory));
-    }
-    if (command === "repo radar") {
-      return renderSubset("Repo Radar", ensureLatestDigestItems(db), (item) => item.repoStarsToday != null);
-    }
-    if (command === "today themes") {
-      const digest = db.getLatestDigest();
-      return digest?.themes.length
-        ? `[Today themes]\n\n${digest.themes.map((theme) => `- ${theme}`).join("\n")}`
-        : "최근 digest theme 정보가 없습니다. 먼저 `brief now`를 실행하세요.";
+    const deterministic = tryDeterministicCommand(command, db);
+    if (deterministic) {
+      return deterministic;
     }
 
-    const expandMatch = command.match(/^expand\s+(\d+)$/);
-    if (expandMatch) {
-      const item = db.getFollowupContext(Number.parseInt(expandMatch[1], 10));
-      return item ? renderExpandedItem(item) : notFound(expandMatch[1]);
+    const intent = classifyFollowupIntent(rawCommand);
+    if (intent.kind === "deterministic_command") {
+      const routed = tryDeterministicCommand(intent.command, db);
+      if (routed) {
+        return routed;
+      }
     }
 
-    const sourceMatch = command.match(/^show sources for\s+(\d+)$/);
-    if (sourceMatch) {
-      const item = db.getFollowupContext(Number.parseInt(sourceMatch[1], 10));
-      return item ? renderSources(item) : notFound(sourceMatch[1]);
+    if (intent.kind === "ask") {
+      return await answerAskFollowup({
+        db,
+        config,
+        question: intent.question,
+        now,
+        referencedNumbers: intent.referencedNumbers,
+        sourceFilter: intent.sourceFilter,
+        comparisonRequested: intent.comparisonRequested
+      });
     }
 
-    const whyMatch = command.match(/^why important\s+(\d+)$/);
-    if (whyMatch) {
-      const item = db.getFollowupContext(Number.parseInt(whyMatch[1], 10));
-      return item ? renderWhyImportant(item) : notFound(whyMatch[1]);
+    if (intent.kind === "research") {
+      return await answerResearchFollowup({
+        db,
+        config,
+        question: intent.question,
+        now,
+        referencedNumbers: intent.referencedNumbers,
+        sourceFilter: intent.sourceFilter
+      });
     }
 
     return [
@@ -67,15 +76,56 @@ export async function runFollowupCommand(input: {
       "- expand N",
       "- show sources for N",
       "- why important N",
-      "- today themes"
+      "- today themes",
+      "- ask <질문>",
+      "- research <질문> (준비 중)"
     ].join("\n");
   } finally {
     db.close();
   }
 }
 
+function collapseInput(command: string): string {
+  return command.trim().replace(/\s+/g, " ");
+}
+
 function normalizeCommand(command: string): string {
   return command.trim().replace(/^\//, "").toLowerCase();
+}
+
+function tryDeterministicCommand(command: string, db: NewsDatabase): string | null {
+  if (command === "openai only") {
+    return renderSubset("OpenAI only", ensureLatestDigestItems(db), (item) => Boolean(item.openaiCategory));
+  }
+  if (command === "repo radar") {
+    return renderSubset("Repo Radar", ensureLatestDigestItems(db), (item) => item.repoStarsToday != null);
+  }
+  if (command === "today themes") {
+    const digest = db.getLatestDigest();
+    return digest?.themes.length
+      ? `[Today themes]\n\n${digest.themes.map((theme) => `- ${theme}`).join("\n")}`
+      : "최근 digest theme 정보가 없습니다. 먼저 `brief now`를 실행하세요.";
+  }
+
+  const expandMatch = command.match(/^expand\s+(\d+)$/);
+  if (expandMatch) {
+    const item = db.getFollowupContext(Number.parseInt(expandMatch[1], 10));
+    return item ? renderExpandedItem(item) : notFound(expandMatch[1]);
+  }
+
+  const sourceMatch = command.match(/^show sources for\s+(\d+)$/);
+  if (sourceMatch) {
+    const item = db.getFollowupContext(Number.parseInt(sourceMatch[1], 10));
+    return item ? renderSources(item) : notFound(sourceMatch[1]);
+  }
+
+  const whyMatch = command.match(/^why important\s+(\d+)$/);
+  if (whyMatch) {
+    const item = db.getFollowupContext(Number.parseInt(whyMatch[1], 10));
+    return item ? renderWhyImportant(item) : notFound(whyMatch[1]);
+  }
+
+  return null;
 }
 
 function ensureLatestDigestItems(db: NewsDatabase): DigestEntry[] {

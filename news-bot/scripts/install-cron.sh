@@ -19,8 +19,8 @@ if [[ -z "$TELEGRAM_USER_ID" ]]; then
   exit 1
 fi
 
-AM_PROMPT="Use the ai_news_brief skill in the workspace at $WORKSPACE_ROOT. Run \`pnpm --dir $BOT_ROOT run digest:am\` via exec. Return only the script output so it can be sent to Telegram as-is. Do not browse the web manually unless the script fails."
-PM_PROMPT="Use the ai_news_brief skill in the workspace at $WORKSPACE_ROOT. Run \`pnpm --dir $BOT_ROOT run digest:pm\` via exec. Return only the script output so it can be sent to Telegram as-is. Do not browse the web manually unless the script fails."
+AM_PROMPT="Use the ai_news_brief skill in the workspace at $WORKSPACE_ROOT. Run \`pnpm --dir $BOT_ROOT digest:am\` via exec. Return only the script output so it can be sent to Telegram as-is. Do not browse the web manually unless the script fails."
+PM_PROMPT="Use the ai_news_brief skill in the workspace at $WORKSPACE_ROOT. Run \`pnpm --dir $BOT_ROOT digest:pm\` via exec. Return only the script output so it can be sent to Telegram as-is. Do not browse the web manually unless the script fails."
 
 "$OPENCLAW_BIN" cron add \
   --name "AI News Brief AM" \
