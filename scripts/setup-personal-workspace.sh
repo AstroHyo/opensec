@@ -25,9 +25,17 @@ copy_if_missing "$REPO_ROOT/workspace-template/TOOLS.md" "$WORKSPACE_ROOT/TOOLS.
 copy_if_missing "$REPO_ROOT/workspace-template/USER.md" "$WORKSPACE_ROOT/USER.md"
 copy_if_missing "$REPO_ROOT/workspace-template/MEMORY.md" "$WORKSPACE_ROOT/MEMORY.md"
 
-ln -sfn "$REPO_ROOT/skills/ai_news_brief" "$WORKSPACE_ROOT/skills/ai_news_brief"
-ln -sfn "$REPO_ROOT/skills/repo_ops" "$WORKSPACE_ROOT/skills/repo_ops"
-ln -sfn "$REPO_ROOT/skills/system_ops" "$WORKSPACE_ROOT/skills/system_ops"
+sync_skill_dir() {
+  local src="$1"
+  local dst="$2"
+  rm -rf "$dst"
+  mkdir -p "$dst"
+  cp -R "$src"/. "$dst"/
+}
+
+sync_skill_dir "$REPO_ROOT/skills/ai_news_brief" "$WORKSPACE_ROOT/skills/ai_news_brief"
+sync_skill_dir "$REPO_ROOT/skills/repo_ops" "$WORKSPACE_ROOT/skills/repo_ops"
+sync_skill_dir "$REPO_ROOT/skills/system_ops" "$WORKSPACE_ROOT/skills/system_ops"
 
 if [[ "$REPO_ROOT" != "$TARGET_REPO_DIR" ]]; then
   echo "Workspace scaffolded at: $WORKSPACE_ROOT"

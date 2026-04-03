@@ -172,20 +172,24 @@ openclaw cron add \
   --cron "0 10 * * *" \
   --tz "America/New_York" \
   --session isolated \
+  --expect-final \
+  --timeout-seconds 600 \
   --announce \
   --channel telegram \
   --to "$TELEGRAM_USER_ID" \
-  "Use the ai_news_brief skill in the workspace at /opt/ai-news-brief. Run \`pnpm --dir /opt/ai-news-brief/news-bot run digest:am\` via exec. Return only the script output so it can be sent to Telegram as-is. Do not browse the web manually unless the script fails."
+  --message "Use the ai_news_brief skill in the workspace at /opt/ai-news-brief. Run \`pnpm --dir /opt/ai-news-brief/news-bot run digest:am\` via exec. Return only the script output so it can be sent to Telegram as-is. Do not browse the web manually unless the script fails."
 
 openclaw cron add \
   --name "AI News Brief PM" \
   --cron "0 20 * * *" \
   --tz "America/New_York" \
   --session isolated \
+  --expect-final \
+  --timeout-seconds 600 \
   --announce \
   --channel telegram \
   --to "$TELEGRAM_USER_ID" \
-  "Use the ai_news_brief skill in the workspace at /opt/ai-news-brief. Run \`pnpm --dir /opt/ai-news-brief/news-bot run digest:pm\` via exec. Return only the script output so it can be sent to Telegram as-is. Do not browse the web manually unless the script fails."
+  --message "Use the ai_news_brief skill in the workspace at /opt/ai-news-brief. Run \`pnpm --dir /opt/ai-news-brief/news-bot run digest:pm\` via exec. Return only the script output so it can be sent to Telegram as-is. Do not browse the web manually unless the script fails."
 ```
 
 Or run:

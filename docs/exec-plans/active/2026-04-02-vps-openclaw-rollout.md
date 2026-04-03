@@ -367,10 +367,12 @@ openclaw cron add \
   --cron "0 10 * * *" \
   --tz "America/New_York" \
   --session isolated \
+  --expect-final \
+  --timeout-seconds 600 \
   --announce \
   --channel telegram \
   --to "123456789" \
-  "Use the ai_news_brief skill in the workspace at /opt/opensec-ai-news-brief. Run \`pnpm --dir /opt/opensec-ai-news-brief/news-bot run digest:am\` via exec. Return only the script output so it can be sent to Telegram as-is. Do not browse the web manually unless the script fails."
+  --message "Use the ai_news_brief skill in the workspace at /opt/opensec-ai-news-brief. Run \`pnpm --dir /opt/opensec-ai-news-brief/news-bot run digest:am\` via exec. Return only the script output so it can be sent to Telegram as-is. Do not browse the web manually unless the script fails."
 ```
 
 And:
@@ -381,10 +383,12 @@ openclaw cron add \
   --cron "0 20 * * *" \
   --tz "America/New_York" \
   --session isolated \
+  --expect-final \
+  --timeout-seconds 600 \
   --announce \
   --channel telegram \
   --to "123456789" \
-  "Use the ai_news_brief skill in the workspace at /opt/opensec-ai-news-brief. Run \`pnpm --dir /opt/opensec-ai-news-brief/news-bot run digest:pm\` via exec. Return only the script output so it can be sent to Telegram as-is. Do not browse the web manually unless the script fails."
+  --message "Use the ai_news_brief skill in the workspace at /opt/opensec-ai-news-brief. Run \`pnpm --dir /opt/opensec-ai-news-brief/news-bot run digest:pm\` via exec. Return only the script output so it can be sent to Telegram as-is. Do not browse the web manually unless the script fails."
 ```
 
 Or use the helper script in the repo:

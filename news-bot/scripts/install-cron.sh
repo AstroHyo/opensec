@@ -3,6 +3,7 @@ set -euo pipefail
 
 OPENCLAW_BIN="${OPENCLAW_BIN:-openclaw}"
 TELEGRAM_USER_ID="${TELEGRAM_USER_ID:-${NEWS_BOT_TELEGRAM_USER_ID:-}}"
+CRON_TIMEOUT_SECONDS="${CRON_TIMEOUT_SECONDS:-600}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 if [[ "$(basename "$(dirname "$REPO_ROOT")")" == "projects" ]]; then
@@ -26,17 +27,21 @@ PM_PROMPT="Use the ai_news_brief skill in the workspace at $WORKSPACE_ROOT. Run 
   --cron "0 10 * * *" \
   --tz "America/New_York" \
   --session isolated \
+  --expect-final \
+  --timeout-seconds "$CRON_TIMEOUT_SECONDS" \
   --announce \
   --channel telegram \
   --to "$TELEGRAM_USER_ID" \
-  "$AM_PROMPT"
+  --message "$AM_PROMPT"
 
 "$OPENCLAW_BIN" cron add \
   --name "AI News Brief PM" \
   --cron "0 20 * * *" \
   --tz "America/New_York" \
   --session isolated \
+  --expect-final \
+  --timeout-seconds "$CRON_TIMEOUT_SECONDS" \
   --announce \
   --channel telegram \
   --to "$TELEGRAM_USER_ID" \
-  "$PM_PROMPT"
+  --message "$PM_PROMPT"
