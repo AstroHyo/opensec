@@ -78,7 +78,7 @@ export async function runFollowupCommand(input: {
       "- why important N",
       "- today themes",
       "- ask <질문>",
-      "- research <질문> (준비 중)"
+      "- research <질문>"
     ].join("\n");
   } finally {
     db.close();
@@ -161,6 +161,7 @@ function renderExpandedItem(item: DigestEntry): string {
     `왜 중요한지: ${item.whyImportant}`,
     item.uncertaintyNotes?.length ? `불확실성 메모: ${item.uncertaintyNotes.join(" / ")}` : null,
     `점수 근거: ${item.scoreReasons.join(" / ")}`,
+    item.signalLinks?.length ? `추가 신호: ${item.signalLinks.map((signal) => signal.label).join(" / ")}` : null,
     `설명: ${item.description ?? "추가 설명 없음"}`,
     `주요 링크: ${item.primaryUrl}`
   ]
@@ -172,8 +173,17 @@ function renderSources(item: DigestEntry): string {
   return [
     `[Sources for ${item.number}] ${item.title}`,
     "",
-    ...item.sourceLinks.map((source, index) => `${index + 1}. ${source.label}\n${source.url}`)
-  ].join("\n\n");
+    "기본 출처:",
+    "",
+    ...item.sourceLinks.map((source, index) => `${index + 1}. ${source.label}\n${source.url}`),
+    item.signalLinks?.length ? "" : null,
+    item.signalLinks?.length ? "추가 신호:" : null,
+    item.signalLinks?.length
+      ? item.signalLinks.map((signal, index) => `${index + 1}. ${signal.label}\n${signal.url}`).join("\n\n")
+      : null
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join("\n\n");
 }
 
 function renderWhyImportant(item: DigestEntry): string {

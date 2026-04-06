@@ -22,8 +22,10 @@ OpenClaw is used as an external orchestration layer for cron execution, Telegram
 ```text
 Sources
   -> source adapters
+  -> source-layer classification (primary / precision / early-warning)
   -> normalization + canonicalization
   -> dedupe + merge
+  -> signal matching
   -> SQLite state
   -> deterministic scoring
   -> digest builder
@@ -35,9 +37,12 @@ Sources
 
 ### Source Adapters
 
-- GeekNews RSS + topic-page original-link extraction
 - OpenAI official RSS
 - GitHub Trending HTML parsing
+- GeekNews RSS + topic-page original-link extraction
+- Techmeme homepage cluster parsing
+- Hacker News Firebase API
+- Bluesky watchlist signal ingestion
 
 ### Processing Layer
 
@@ -63,6 +68,8 @@ The current ranking system combines:
 
 - source authority
 - freshness
+- precision-layer boosts
+- early-warning boosts
 - user-interest keyword matches
 - methodology signal
 - repo traction
@@ -114,7 +121,11 @@ The daily digest itself should remain deterministic even if research mode is lat
 
 ```text
 Sources
-  -> deterministic fetch + normalize + dedupe + score
+  -> primary + precision fetch
+  -> normalize + dedupe + merge
+  -> early-warning signal fetch
+  -> signal-to-story match
+  -> deterministic score
   -> shortlist candidates
   -> LLM item enrichment
   -> final digest assembly
@@ -127,6 +138,7 @@ Sources
 - Do not let the model decide what sources to crawl.
 - Do not let the model silently replace stored metadata.
 - Do not let follow-up answers ignore stored source links.
+- Do not let early-warning social signals create standalone digest items.
 - Do not let enrichment failure block digest delivery.
 
 ## Main Documents

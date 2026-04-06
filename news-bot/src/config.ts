@@ -1,5 +1,7 @@
 import path from "node:path";
 import { z } from "zod";
+import { BLUESKY_WATCHLIST } from "./sources/blueskyWatchlist.js";
+import type { BlueskyWatchActor } from "./types.js";
 
 const envSchema = z.object({
   NEWS_BOT_TIMEZONE: z.string().default("America/New_York"),
@@ -26,7 +28,15 @@ const envSchema = z.object({
   NEWS_BOT_LLM_MODEL_RESEARCH: z.string().default("gpt-5.4-mini"),
   NEWS_BOT_LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
   NEWS_BOT_LLM_MAX_ITEMS_AM: z.coerce.number().int().positive().default(12),
-  NEWS_BOT_LLM_MAX_ITEMS_PM: z.coerce.number().int().positive().default(20)
+  NEWS_BOT_LLM_MAX_ITEMS_PM: z.coerce.number().int().positive().default(20),
+  NEWS_BOT_BLUESKY_ENABLED: z
+    .string()
+    .optional()
+    .transform((value) => value === "1" || value === "true"),
+  NEWS_BOT_SIGNAL_WINDOW_HOURS: z.coerce.number().int().positive().default(48),
+  NEWS_BOT_HN_TOP_LIMIT: z.coerce.number().int().positive().default(18),
+  NEWS_BOT_HN_NEW_LIMIT: z.coerce.number().int().positive().default(12),
+  NEWS_BOT_BLUESKY_MAX_POSTS_PER_ACTOR: z.coerce.number().int().positive().default(10)
 });
 
 export interface AppConfig {
@@ -49,11 +59,22 @@ export interface AppConfig {
     maxItemsAm: number;
     maxItemsPm: number;
   };
+  sourcing: {
+    blueskyEnabled: boolean;
+    signalWindowHours: number;
+    hnTopLimit: number;
+    hnNewLimit: number;
+    blueskyMaxPostsPerActor: number;
+    blueskyWatchlist: BlueskyWatchActor[];
+  };
   sourceUrls: {
     geeknewsRss: string;
     openaiNewsRss: string;
     openaiSections: Array<{ label: string; url: string }>;
     githubTrending: Array<{ label: string; url: string }>;
+    techmemeHome: string;
+    hackerNewsApiBase: string;
+    blueskyApiBase: string;
   };
 }
 
@@ -81,6 +102,14 @@ export function loadConfig(cwd = process.cwd()): AppConfig {
       maxItemsAm: env.NEWS_BOT_LLM_MAX_ITEMS_AM,
       maxItemsPm: env.NEWS_BOT_LLM_MAX_ITEMS_PM
     },
+    sourcing: {
+      blueskyEnabled: Boolean(env.NEWS_BOT_BLUESKY_ENABLED),
+      signalWindowHours: env.NEWS_BOT_SIGNAL_WINDOW_HOURS,
+      hnTopLimit: env.NEWS_BOT_HN_TOP_LIMIT,
+      hnNewLimit: env.NEWS_BOT_HN_NEW_LIMIT,
+      blueskyMaxPostsPerActor: env.NEWS_BOT_BLUESKY_MAX_POSTS_PER_ACTOR,
+      blueskyWatchlist: BLUESKY_WATCHLIST
+    },
     sourceUrls: {
       geeknewsRss: "https://news.hada.io/rss/news",
       openaiNewsRss: "https://openai.com/news/rss.xml",
@@ -96,7 +125,10 @@ export function loadConfig(cwd = process.cwd()): AppConfig {
         { label: "GitHub Trending / typescript", url: "https://github.com/trending/typescript" },
         { label: "GitHub Trending / javascript", url: "https://github.com/trending/javascript" },
         { label: "GitHub Trending / rust", url: "https://github.com/trending/rust" }
-      ]
+      ],
+      techmemeHome: "https://www.techmeme.com",
+      hackerNewsApiBase: "https://hacker-news.firebaseio.com/v0",
+      blueskyApiBase: "https://public.api.bsky.app/xrpc"
     }
   };
 }

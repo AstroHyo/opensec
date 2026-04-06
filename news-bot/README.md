@@ -4,9 +4,12 @@ Deterministic single-user AI news briefing bot for a Linux VPS. It fetches AI/ne
 
 ## What it does
 - Fetches and normalizes:
-  - GeekNews / `https://news.hada.io/rss/news`
   - OpenAI official news via `https://openai.com/news/rss.xml`
   - GitHub Trending overall + `python` + `typescript` + `javascript` + `rust`
+  - GeekNews / `https://news.hada.io/rss/news`
+  - Techmeme homepage clusters
+  - Hacker News via `topstories` + `newstories`
+  - Bluesky watchlist signals as an optional early-warning layer
 - Deduplicates with:
   - canonical URL normalization
   - normalized title hash
@@ -227,8 +230,9 @@ TELEGRAM_USER_ID=123456789 ./scripts/install-cron.sh
 
 ## Design choices
 - OpenAI uses the official RSS feed because the HTML newsroom is Cloudflare-protected in headless VPS contexts. The adapter still preserves newsroom section labels and URLs.
-- GeekNews is a discovery signal. It is not treated as authoritative truth by itself.
+- GeekNews, Techmeme, and Hacker News act as precision discovery signals. They help ranking and candidate discovery, but they are not treated as primary truth sources by themselves.
 - GitHub Trending is filtered for AI/tooling relevance, so novelty repos do not make Repo Radar just because they are popular.
+- Bluesky is watchlist-based, disabled by default, and only boosts or annotates existing stories. It never creates standalone digest items.
 - The daily digest does not depend on live model discovery.
 - LLM enrichment is optional and runs only after deterministic fetch, dedupe, ranking, and item selection.
 - Live `research` is opt-in and happens only after the digest has already been generated.

@@ -60,7 +60,12 @@ export function selectRelevantItems(input: {
 export function summarizeSources(items: DigestEntry[], usedNumbers: number[]): string[] {
   const allowed = new Set(usedNumbers);
   return uniqueStrings(
-    items.filter((item) => allowed.has(item.number)).flatMap((item) => item.sourceLinks.map((source) => source.label))
+    items
+      .filter((item) => allowed.has(item.number))
+      .flatMap((item) => [
+        ...item.sourceLinks.map((source) => source.label),
+        ...(item.signalLinks ?? []).map((signal) => signal.label)
+      ])
   ).slice(0, 4);
 }
 
@@ -97,7 +102,8 @@ function computeItemRelevanceScore(item: DigestEntry, tokens: string[], question
     item.sourceLabel,
     item.openaiCategory ?? "",
     item.keywords.join(" "),
-    item.scoreReasons.join(" ")
+    item.scoreReasons.join(" "),
+    (item.signalLinks ?? []).map((signal) => signal.label).join(" ")
   ]
     .join(" ")
     .toLowerCase();

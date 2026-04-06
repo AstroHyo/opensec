@@ -252,6 +252,7 @@ function toDigestEntry(entry: ScoredItem, sectionKey: string): DigestEntry {
     score: Math.round(entry.score.total),
     scoreReasons: entry.score.reasons,
     sourceLinks,
+    signalLinks: dedupeSignalLinks(entry.item),
     openaiCategory: entry.item.openaiCategory,
     repoLanguage: entry.item.repoLanguage,
     repoStarsToday: entry.item.repoStarsToday,
@@ -263,19 +264,56 @@ function toDigestEntry(entry: ScoredItem, sectionKey: string): DigestEntry {
 }
 
 function dedupeSourceLinks(item: NormalizedItemRecord): Array<{ label: string; url: string }> {
+  const grouped = new Map<string, { url: string; labels: string[]; priority: number }>();
+
+  const orderedSources = [...item.sources].sort((left, right) => {
+    const leftPriority = left.sourceLayer === "primary" ? 0 : 1;
+    const rightPriority = right.sourceLayer === "primary" ? 0 : 1;
+    return leftPriority - rightPriority || left.sourceLabel.localeCompare(right.sourceLabel);
+  });
+
+  for (const source of orderedSources) {
+    const url = source.originalUrl ?? source.sourceUrl;
+    const priority = source.sourceLayer === "primary" ? 0 : 1;
+    const existing = grouped.get(url);
+    if (!existing) {
+      grouped.set(url, { url, labels: [source.sourceLabel], priority });
+      continue;
+    }
+    if (!existing.labels.includes(source.sourceLabel)) {
+      existing.labels.push(source.sourceLabel);
+    }
+    existing.priority = Math.min(existing.priority, priority);
+  }
+
+  if (grouped.size === 0) {
+    grouped.set(item.originalUrl ?? item.sourceUrl, {
+      url: item.originalUrl ?? item.sourceUrl,
+      labels: [item.primarySourceLabel],
+      priority: item.primarySourceLayer === "primary" ? 0 : 1
+    });
+  }
+
+  return [...grouped.values()]
+    .sort((left, right) => left.priority - right.priority || left.url.localeCompare(right.url))
+    .map((entry) => ({ label: entry.labels.join(", "), url: entry.url }));
+}
+
+function dedupeSignalLinks(item: NormalizedItemRecord): Array<{ label: string; url: string }> {
   const seen = new Set<string>();
   const links: Array<{ label: string; url: string }> = [];
 
-  for (const source of item.sources) {
-    const url = source.originalUrl ?? source.sourceUrl;
-    if (!seen.has(url)) {
-      seen.add(url);
-      links.push({ label: source.sourceLabel, url });
+  for (const match of item.matchedSignals) {
+    const url = match.signal.postUrl;
+    if (seen.has(url)) {
+      continue;
     }
-  }
 
-  if (links.length === 0) {
-    links.push({ label: item.primarySourceLabel, url: item.originalUrl ?? item.sourceUrl });
+    seen.add(url);
+    links.push({
+      label: `${match.signal.actorLabel} / Bluesky`,
+      url
+    });
   }
 
   return links;
@@ -315,6 +353,14 @@ function buildSummary(item: NormalizedItemRecord, score: ScoreBreakdown): string
     return truncate(`GeekNews에서 화제가 된 주제입니다. ${snippet}`, 120);
   }
 
+  if (item.sourceType === "techmeme") {
+    return truncate("Techmeme가 메인 cluster로 집계한 항목입니다. 시장 전체에서 확산 중인 주제인지 보기 좋습니다.", 120);
+  }
+
+  if (item.sourceType === "hacker_news") {
+    return truncate("Hacker News에서 빠르게 주목받는 항목입니다. 개발자 반응과 실전 relevance를 같이 볼 수 있습니다.", 120);
+  }
+
   return truncate(`${topicPhrase ?? "실무 영향이 있는 신호"}를 중심으로 본 항목입니다.`, 120);
 }
 
@@ -334,6 +380,10 @@ function buildWhyImportant(item: NormalizedItemRecord, score: ScoreBreakdown): s
 
   if (item.crossSignalCount > 1) {
     return truncate("여러 소스에서 동시에 잡혀 실제 파급 가능성이 더 큰 항목입니다.", 110);
+  }
+
+  if (item.matchedSignals.length > 0) {
+    return truncate("저장된 기사 근거에 더해 Bluesky watch 신호까지 붙어 있어 추가 확산 가능성을 같이 봐야 합니다.", 110);
   }
 
   return truncate("실무자 관점에서 신호 밀도가 높아 짧게라도 확인할 만한 항목입니다.", 110);
@@ -417,6 +467,10 @@ function buildThemes(items: DigestEntry[], mode: DigestMode): string[] {
 
   if (items.some((item) => item.sourceLabel.startsWith("GeekNews"))) {
     bullets.push("GeekNews가 한국 개발자 커뮤니티의 실전형 tooling 관심사를 보조 신호로 잘 보여줍니다.");
+  }
+
+  if (items.some((item) => item.sourceLabel.startsWith("Techmeme") || item.scoreReasons.some((reason) => reason.includes("Techmeme")))) {
+    bullets.push("Techmeme/HN 같은 precision layer가 붙은 항목은 시장 확산과 개발자 반응을 함께 확인할 가치가 큽니다.");
   }
 
   if (mode === "pm" && items.some((item) => item.sectionKey === "repo_radar")) {

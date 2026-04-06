@@ -22,6 +22,7 @@ export async function fetchOpenAiNewsItems(config: AppConfig, fetchedAt: string)
     items.push({
       sourceId: "openai_news",
       sourceType: "openai_official",
+      sourceLayer: "primary",
       sourceLabel: categoryToSourceLabel(category),
       sourceAuthority: 100,
       externalId: link,

@@ -51,6 +51,7 @@ function parseTrendingPage(
     items.push({
       sourceId: "github_trending",
       sourceType: "github_trending",
+      sourceLayer: "primary",
       sourceLabel,
       sourceAuthority: 74,
       externalId: `${sourceLabel}:${repoOwner}/${repoName}`,

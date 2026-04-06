@@ -1,0 +1,42 @@
+{
+  "feed": [
+    {
+      "post": {
+        "uri": "at://did:plc:pv7fudnt4dspurzdnyq73pfe/app.bsky.feed.post/3mirderejoq2d",
+        "author": {
+          "handle": "techmeme.com",
+          "displayName": "Techmeme",
+          "did": "did:plc:pv7fudnt4dspurzdnyq73pfe"
+        },
+        "record": {
+          "createdAt": "2026-03-27T14:20:00Z",
+          "text": "OpenAI's new agent runtime patterns for MCP, memory, and browser automation (Example Blog)\n\nMain Link | Techmeme Permalink",
+          "facets": [
+            {
+              "features": [
+                {
+                  "$type": "app.bsky.richtext.facet#link",
+                  "uri": "https://blog.example.com/agent-runtime-patterns"
+                }
+              ]
+            },
+            {
+              "features": [
+                {
+                  "$type": "app.bsky.richtext.facet#link",
+                  "uri": "https://www.techmeme.com/260327/p1#a260327p1"
+                }
+              ]
+            }
+          ]
+        },
+        "bookmarkCount": 2,
+        "replyCount": 0,
+        "repostCount": 1,
+        "likeCount": 8,
+        "quoteCount": 0,
+        "indexedAt": "2026-03-27T14:20:01Z"
+      }
+    }
+  ]
+}

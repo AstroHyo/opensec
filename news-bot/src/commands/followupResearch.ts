@@ -61,8 +61,13 @@ export async function answerResearchFollowup(input: {
     );
   }
 
+  const unmatchedSignals = input.db.listUnmatchedSignalEvents(
+    4,
+    input.now.toUTC().minus({ hours: input.config.sourcing.signalWindowHours }).toISO() ?? undefined
+  );
+  const researchQuestion = augmentQuestionWithSignals(input.question, unmatchedSignals);
   const prompts = buildResearchAnswerPrompts({
-    question: input.question,
+    question: researchQuestion,
     items: selectedItems,
     themes: digest.themes
   });
@@ -72,7 +77,12 @@ export async function answerResearchFollowup(input: {
     JSON.stringify({
       question: input.question,
       itemIds: selectedItems.map((item) => item.itemId),
-      titles: selectedItems.map((item) => item.title)
+      titles: selectedItems.map((item) => item.title),
+      unmatchedSignals: unmatchedSignals.map((signal) => ({
+        actor: signal.actorLabel,
+        linkedUrl: signal.linkedUrl,
+        title: signal.title
+      }))
     })
   );
   const runId = input.db.startLlmRun({
@@ -138,6 +148,22 @@ export async function answerResearchFollowup(input: {
       "live research가 실패해서 저장된 digest 근거로 먼저 답했습니다."
     );
   }
+}
+
+function augmentQuestionWithSignals(
+  question: string,
+  signals: Array<{ actorLabel: string; linkedUrl?: string | null; title?: string | null }>
+): string {
+  const hints = signals
+    .filter((signal) => signal.linkedUrl)
+    .map((signal) => `- ${signal.actorLabel}: ${signal.title ?? "untitled"} | ${signal.linkedUrl}`)
+    .slice(0, 4);
+
+  if (hints.length === 0) {
+    return question;
+  }
+
+  return [question, "", "Potential recent Bluesky signals:", ...hints].join("\n");
 }
 
 function renderResearchAnswer(input: {

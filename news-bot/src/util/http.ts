@@ -26,3 +26,16 @@ export async function fetchText(
     clearTimeout(timeout);
   }
 }
+
+export async function fetchJson<T>(
+  url: string,
+  timeoutMs: number,
+  headers?: Record<string, string>
+): Promise<T> {
+  const text = await fetchText(url, timeoutMs, {
+    accept: "application/json,text/plain;q=0.9,*/*;q=0.8",
+    ...headers
+  });
+
+  return JSON.parse(text) as T;
+}

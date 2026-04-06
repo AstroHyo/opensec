@@ -27,6 +27,7 @@ export async function fetchGeekNewsItems(config: AppConfig, fetchedAt: string): 
     items.push({
       sourceId: "geeknews",
       sourceType: "geeknews",
+      sourceLayer: "precision",
       sourceLabel: `GeekNews / ${capitalize(geeknewsKind)}`,
       sourceAuthority: 62,
       externalId: topicId,

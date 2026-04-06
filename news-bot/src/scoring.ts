@@ -13,7 +13,10 @@ const SOURCE_AUTHORITY: Record<NormalizedItemRecord["sourceType"], number> = {
   openai_official: 72,
   geeknews: 44,
   github_trending: 48,
-  vendor_official: 38
+  vendor_official: 38,
+  techmeme: 56,
+  hacker_news: 52,
+  social_signal: 18
 };
 
 const OPENAI_CATEGORY_BONUS: Record<string, number> = {
@@ -190,6 +193,8 @@ export function scoreItem(item: NormalizedItemRecord, context: ScoreContext): Sc
     }
   }
 
+  const precisionSignalScore = computePrecisionSignalScore(item, reasons);
+  const earlyWarningScore = computeEarlyWarningScore(item, reasons);
   const crossSignalScore = Math.min(18, Math.max(0, item.crossSignalCount - 1) * 8);
   if (crossSignalScore > 0) {
     reasons.push("복수 소스에서 동시 포착");
@@ -221,6 +226,8 @@ export function scoreItem(item: NormalizedItemRecord, context: ScoreContext): Sc
     keywordScore +
     methodologyScore +
     tractionScore +
+    precisionSignalScore +
+    earlyWarningScore +
     crossSignalScore -
     resendPenalty;
 
@@ -233,10 +240,59 @@ export function scoreItem(item: NormalizedItemRecord, context: ScoreContext): Sc
     methodologyScore,
     tractionScore,
     crossSignalScore,
+    precisionSignalScore,
+    earlyWarningScore,
     resendPenalty,
     matchedKeywords: [...matchedKeywords],
     reasons
   };
+}
+
+function computePrecisionSignalScore(item: NormalizedItemRecord, reasons: string[]): number {
+  const precisionSources = item.sources.filter((source) => source.sourceLayer === "precision");
+  if (precisionSources.length === 0) {
+    return 0;
+  }
+
+  let score = 0;
+  for (const source of precisionSources) {
+    if (source.sourceType === "techmeme") {
+      const isLeadCluster = Boolean((source.payload as Record<string, unknown>)?.isLeadCluster);
+      score += isLeadCluster ? 8 : 4;
+    } else if (source.sourceType === "hacker_news") {
+      const payload = source.payload as Record<string, unknown>;
+      const base = 6;
+      const scoreSignal = Math.max(0, Number(payload?.score ?? 0));
+      const commentSignal = Math.max(0, Number(payload?.descendants ?? payload?.comments ?? 0));
+      score += base + Math.min(4, Math.floor(scoreSignal / 200) + Math.floor(commentSignal / 60));
+    } else if (source.sourceType === "geeknews") {
+      score += 4;
+    }
+  }
+
+  const capped = Math.min(18, score);
+  if (precisionSources.some((source) => source.sourceType === "techmeme")) {
+    reasons.push("Techmeme precision 신호");
+  }
+  if (precisionSources.some((source) => source.sourceType === "hacker_news")) {
+    reasons.push("HN precision 신호");
+  }
+  if (precisionSources.some((source) => source.sourceType === "geeknews")) {
+    reasons.push("GeekNews precision 신호");
+  }
+
+  return capped;
+}
+
+function computeEarlyWarningScore(item: NormalizedItemRecord, reasons: string[]): number {
+  const distinctActors = [...new Set(item.matchedSignals.map((match) => match.signal.actorLabel.trim().toLowerCase()))].filter(Boolean);
+  if (distinctActors.length === 0) {
+    return 0;
+  }
+
+  const score = Math.min(6, distinctActors.length * 2 + (distinctActors.length >= 2 ? 1 : 0));
+  reasons.push("Bluesky signal");
+  return score;
 }
 
 export function isRelevantRepo(item: NormalizedItemRecord): boolean {

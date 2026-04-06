@@ -11,6 +11,7 @@ function makeItem(overrides: Partial<NormalizedItemRecord>): NormalizedItemRecor
     normalizedTitle: "base item",
     titleHash: "hash",
     sourceType: "github_trending",
+    primarySourceLayer: "primary",
     primarySourceId: "github_trending",
     primarySourceLabel: "GitHub Trending / overall",
     sourceAuthority: 74,
@@ -36,6 +37,7 @@ function makeItem(overrides: Partial<NormalizedItemRecord>): NormalizedItemRecor
     lastSentAt: null,
     crossSignalCount: 1,
     sources: [],
+    matchedSignals: [],
     ...overrides
   };
 }

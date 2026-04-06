@@ -10,15 +10,20 @@ import type {
   DigestEntry,
   DigestThemeEnrichmentRecord,
   ItemEnrichmentRecord,
+  SignalEventInput,
+  SignalEventRecord,
+  SignalMatchRecord,
   ItemSourceRecord,
   LlmRunRecord,
   LlmRunType,
   NormalizedItemRecord,
   SavedDigestRecord,
   SourceItemInput,
+  SourceLayer,
   SourceRunSummary,
   SourceType
 } from "./types.js";
+import { inferSourceLayer } from "./sources/layers.js";
 
 type BetterSqlite3Database = Database.Database;
 
@@ -44,6 +49,7 @@ CREATE TABLE IF NOT EXISTS normalized_items (
   normalized_title TEXT NOT NULL,
   title_hash TEXT NOT NULL,
   source_type TEXT NOT NULL,
+  primary_source_layer TEXT NOT NULL DEFAULT 'primary',
   primary_source_id TEXT NOT NULL,
   primary_source_label TEXT NOT NULL,
   source_authority INTEGER NOT NULL,
@@ -73,6 +79,7 @@ CREATE TABLE IF NOT EXISTS item_sources (
   item_id INTEGER NOT NULL REFERENCES normalized_items(id) ON DELETE CASCADE,
   source_id TEXT NOT NULL,
   source_type TEXT NOT NULL,
+  source_layer TEXT NOT NULL DEFAULT 'primary',
   source_label TEXT NOT NULL,
   external_id TEXT NOT NULL,
   source_url TEXT NOT NULL,
@@ -168,12 +175,42 @@ CREATE TABLE IF NOT EXISTS digest_enrichments (
   UNIQUE(digest_cache_key, prompt_version)
 );
 
+CREATE TABLE IF NOT EXISTS signal_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_id TEXT NOT NULL,
+  source_layer TEXT NOT NULL,
+  actor_label TEXT NOT NULL,
+  actor_handle TEXT,
+  post_url TEXT NOT NULL,
+  linked_url TEXT,
+  title TEXT,
+  excerpt TEXT,
+  published_at TEXT,
+  fetched_at TEXT NOT NULL,
+  metrics_json TEXT NOT NULL,
+  metadata_json TEXT NOT NULL,
+  UNIQUE(source_id, post_url)
+);
+
+CREATE TABLE IF NOT EXISTS signal_event_matches (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  signal_event_id INTEGER NOT NULL REFERENCES signal_events(id) ON DELETE CASCADE,
+  item_id INTEGER NOT NULL REFERENCES normalized_items(id) ON DELETE CASCADE,
+  match_type TEXT NOT NULL,
+  boost_score REAL NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE(signal_event_id, item_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_normalized_items_title_hash ON normalized_items(title_hash);
 CREATE INDEX IF NOT EXISTS idx_normalized_items_last_seen ON normalized_items(last_seen_at);
 CREATE INDEX IF NOT EXISTS idx_sent_items_item_sent_at ON sent_items(item_id, sent_at DESC);
 CREATE INDEX IF NOT EXISTS idx_followup_context_digest_number ON followup_context(digest_id, item_number);
 CREATE INDEX IF NOT EXISTS idx_item_enrichments_item_lookup ON item_enrichments(item_id, prompt_version, source_hash);
 CREATE INDEX IF NOT EXISTS idx_digest_enrichments_lookup ON digest_enrichments(digest_cache_key, prompt_version);
+CREATE INDEX IF NOT EXISTS idx_signal_events_linked_url ON signal_events(linked_url);
+CREATE INDEX IF NOT EXISTS idx_signal_events_fetched_at ON signal_events(fetched_at DESC);
+CREATE INDEX IF NOT EXISTS idx_signal_event_matches_item ON signal_event_matches(item_id, created_at DESC);
 `;
 
 export class NewsDatabase {
@@ -186,10 +223,26 @@ export class NewsDatabase {
 
     this.db = new Database(dbPath);
     this.db.exec(SCHEMA);
+    this.applyMigrations();
   }
 
   close(): void {
     this.db.close();
+  }
+
+  private applyMigrations(): void {
+    this.ensureColumn("normalized_items", "primary_source_layer", "TEXT NOT NULL DEFAULT 'primary'");
+    this.ensureColumn("item_sources", "source_layer", "TEXT NOT NULL DEFAULT 'primary'");
+  }
+
+  private ensureColumn(tableName: string, columnName: string, columnSql: string): void {
+    const columns = this.db
+      .prepare<unknown[], { name: string }>(`PRAGMA table_info(${tableName})`)
+      .all();
+
+    if (!columns.some((column) => column.name === columnName)) {
+      this.db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnSql}`);
+    }
   }
 
   startSourceRun(sourceId: string, startedAt: string): number {
@@ -238,6 +291,7 @@ export class NewsDatabase {
 
     const normalizedTitle = normalizeTitle(input.title);
     const titleHash = sha256Hex(normalizedTitle);
+    const sourceLayer = input.sourceLayer ?? inferSourceLayer(input.sourceId, input.sourceType);
     const canonicalUrl = canonicalizeUrl(input.canonicalUrl);
     const originalUrl = input.originalUrl ? canonicalizeUrl(input.originalUrl) : null;
     const sourceUrl = canonicalizeUrl(input.sourceUrl);
@@ -274,11 +328,11 @@ export class NewsDatabase {
       const inserted = this.db
         .prepare(
           `INSERT INTO normalized_items (
-            canonical_url, title, normalized_title, title_hash, source_type, primary_source_id, primary_source_label,
+            canonical_url, title, normalized_title, title_hash, source_type, primary_source_layer, primary_source_id, primary_source_label,
             source_authority, source_labels_json, published_at, first_seen_at, last_seen_at, last_updated_at,
             item_kind, openai_category, geeknews_kind, repo_owner, repo_name, repo_language, repo_stars_today,
             repo_stars_total, description, content_text, source_url, original_url, metadata_json, keywords_json
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           canonicalUrl,
@@ -286,6 +340,7 @@ export class NewsDatabase {
           normalizedTitle,
           titleHash,
           input.sourceType,
+          sourceLayer,
           input.sourceId,
           input.sourceLabel,
           input.sourceAuthority,
@@ -311,7 +366,7 @@ export class NewsDatabase {
         );
 
       const itemId = Number(inserted.lastInsertRowid);
-      this.insertItemSource(itemId, input, sourceUrl, originalUrl);
+      this.insertItemSource(itemId, { ...input, sourceLayer }, sourceUrl, originalUrl);
       return this.getNormalizedItemById(itemId);
     }
 
@@ -320,8 +375,8 @@ export class NewsDatabase {
     this.db
       .prepare(
         `UPDATE normalized_items
-         SET canonical_url = ?, title = ?, normalized_title = ?, title_hash = ?, source_type = ?, primary_source_id = ?,
-             primary_source_label = ?, source_authority = ?, source_labels_json = ?, published_at = ?, last_seen_at = ?,
+         SET canonical_url = ?, title = ?, normalized_title = ?, title_hash = ?, source_type = ?, primary_source_layer = ?,
+             primary_source_id = ?, primary_source_label = ?, source_authority = ?, source_labels_json = ?, published_at = ?, last_seen_at = ?,
              last_updated_at = ?, item_kind = ?, openai_category = ?, geeknews_kind = ?, repo_owner = ?, repo_name = ?,
              repo_language = ?, repo_stars_today = ?, repo_stars_total = ?, description = ?, content_text = ?, source_url = ?,
              original_url = ?, metadata_json = ?, keywords_json = ?
@@ -333,6 +388,7 @@ export class NewsDatabase {
         merged.normalized_title,
         merged.title_hash,
         merged.source_type,
+        merged.primary_source_layer,
         merged.primary_source_id,
         merged.primary_source_label,
         merged.source_authority,
@@ -357,7 +413,7 @@ export class NewsDatabase {
         fuzzyMatch.id
       );
 
-    this.insertItemSource(fuzzyMatch.id, input, sourceUrl, originalUrl);
+    this.insertItemSource(fuzzyMatch.id, { ...input, sourceLayer }, sourceUrl, originalUrl);
     return this.getNormalizedItemById(fuzzyMatch.id);
   }
 
@@ -467,6 +523,7 @@ export class NewsDatabase {
       itemId: row.item_id,
       sourceId: row.source_id as ItemSourceRecord["sourceId"],
       sourceType: row.source_type as SourceType,
+      sourceLayer: row.source_layer as SourceLayer,
       sourceLabel: row.source_label,
       externalId: row.external_id,
       sourceUrl: row.source_url,
@@ -475,6 +532,165 @@ export class NewsDatabase {
       publishedAt: row.published_at,
       fetchedAt: row.fetched_at,
       payload: JSON.parse(row.payload_json)
+    }));
+  }
+
+  saveSignalEvents(events: SignalEventInput[]): SignalEventRecord[] {
+    return events.map((event) => this.saveSignalEvent(event));
+  }
+
+  saveSignalEvent(input: SignalEventInput): SignalEventRecord {
+    const sourceLayer = input.sourceLayer ?? "early_warning";
+    const linkedUrl = input.linkedUrl ? canonicalizeUrl(input.linkedUrl) : null;
+    const postUrl = canonicalizeUrl(input.postUrl);
+
+    this.db
+      .prepare(
+        `INSERT INTO signal_events (
+          source_id, source_layer, actor_label, actor_handle, post_url, linked_url, title, excerpt,
+          published_at, fetched_at, metrics_json, metadata_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(source_id, post_url)
+        DO UPDATE SET
+          actor_label = excluded.actor_label,
+          actor_handle = excluded.actor_handle,
+          linked_url = excluded.linked_url,
+          title = excluded.title,
+          excerpt = excluded.excerpt,
+          published_at = excluded.published_at,
+          fetched_at = excluded.fetched_at,
+          metrics_json = excluded.metrics_json,
+          metadata_json = excluded.metadata_json`
+      )
+      .run(
+        input.sourceId,
+        sourceLayer,
+        collapseWhitespace(input.actorLabel),
+        input.actorHandle ?? null,
+        postUrl,
+        linkedUrl,
+        input.title ? collapseWhitespace(input.title) : null,
+        input.excerpt ? collapseWhitespace(input.excerpt) : null,
+        input.publishedAt ?? null,
+        input.fetchedAt,
+        JSON.stringify(input.metrics ?? {}),
+        JSON.stringify(input.metadata ?? {})
+      );
+
+    const saved = this.db
+      .prepare<unknown[], SignalEventRow>(
+        `SELECT *
+         FROM signal_events
+         WHERE source_id = ? AND post_url = ?
+         LIMIT 1`
+      )
+      .get(input.sourceId, postUrl);
+
+    if (!saved) {
+      throw new Error(`Failed to load saved signal event for ${postUrl}`);
+    }
+
+    return mapSignalEventRow(saved);
+  }
+
+  matchRecentSignalEvents(minFetchedAtIso: string): number {
+    const signals = this.db
+      .prepare<unknown[], SignalEventRow>(
+        `SELECT *
+         FROM signal_events
+         WHERE fetched_at >= ?
+         ORDER BY fetched_at DESC`
+      )
+      .all(minFetchedAtIso)
+      .map((row) => mapSignalEventRow(row));
+
+    let matched = 0;
+    const insert = this.db.prepare(
+      `INSERT INTO signal_event_matches (
+        signal_event_id, item_id, match_type, boost_score, created_at
+      ) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(signal_event_id, item_id)
+      DO UPDATE SET
+        match_type = excluded.match_type,
+        boost_score = excluded.boost_score,
+        created_at = excluded.created_at`
+    );
+
+    for (const signal of signals) {
+      const match = this.findBestItemForSignal(signal, minFetchedAtIso);
+      if (!match) {
+        continue;
+      }
+
+      insert.run(signal.id, match.itemId, match.matchType, match.boostScore, signal.fetchedAt);
+      matched += 1;
+    }
+
+    return matched;
+  }
+
+  listUnmatchedSignalEvents(limit: number, minFetchedAtIso?: string): SignalEventRecord[] {
+    const rows = minFetchedAtIso
+      ? this.db
+          .prepare<unknown[], SignalEventRow>(
+            `SELECT se.*
+             FROM signal_events se
+             LEFT JOIN signal_event_matches sem ON sem.signal_event_id = se.id
+             WHERE sem.id IS NULL AND se.fetched_at >= ?
+             ORDER BY se.fetched_at DESC
+             LIMIT ?`
+          )
+          .all(minFetchedAtIso, limit)
+      : this.db
+          .prepare<unknown[], SignalEventRow>(
+            `SELECT se.*
+             FROM signal_events se
+             LEFT JOIN signal_event_matches sem ON sem.signal_event_id = se.id
+             WHERE sem.id IS NULL
+             ORDER BY se.fetched_at DESC
+             LIMIT ?`
+          )
+          .all(limit);
+
+    return rows.map((row) => mapSignalEventRow(row));
+  }
+
+  getSignalMatchesForItem(itemId: number): SignalMatchRecord[] {
+    const rows = this.db
+      .prepare<unknown[], SignalMatchRow>(
+        `SELECT
+           sem.id AS match_id,
+           sem.signal_event_id,
+           sem.item_id,
+           sem.match_type,
+           sem.boost_score,
+           se.id AS signal_id,
+           se.source_id,
+           se.source_layer,
+           se.actor_label,
+           se.actor_handle,
+           se.post_url,
+           se.linked_url,
+           se.title,
+           se.excerpt,
+           se.published_at,
+           se.fetched_at,
+           se.metrics_json,
+           se.metadata_json
+         FROM signal_event_matches sem
+         JOIN signal_events se ON se.id = sem.signal_event_id
+         WHERE sem.item_id = ?
+         ORDER BY sem.created_at DESC, se.actor_label ASC`
+      )
+      .all(itemId);
+
+    return rows.map((row) => ({
+      id: row.match_id,
+      signalEventId: row.signal_event_id,
+      itemId: row.item_id,
+      matchType: row.match_type as SignalMatchRecord["matchType"],
+      boostScore: row.boost_score,
+      signal: mapSignalEventRow(row)
     }));
   }
 
@@ -632,18 +848,77 @@ export class NewsDatabase {
     return saved;
   }
 
+  private findBestItemForSignal(
+    signal: SignalEventRecord,
+    minFetchedAtIso: string
+  ): { itemId: number; matchType: SignalMatchRecord["matchType"]; boostScore: number } | null {
+    if (signal.linkedUrl) {
+      const exact = this.db
+        .prepare<unknown[], { id: number }>(
+          `SELECT id
+           FROM normalized_items
+           WHERE canonical_url = ? OR original_url = ? OR source_url = ?
+           ORDER BY source_authority DESC, last_seen_at DESC
+           LIMIT 1`
+        )
+        .get(signal.linkedUrl, signal.linkedUrl, signal.linkedUrl);
+
+      if (exact) {
+        return {
+          itemId: exact.id,
+          matchType: "linked_url",
+          boostScore: 2
+        };
+      }
+    }
+
+    if (!signal.linkedUrl || !signal.title) {
+      return null;
+    }
+
+    const recentRows = this.db
+      .prepare<unknown[], ExistingItemRow>(
+        `SELECT *
+         FROM normalized_items
+         WHERE COALESCE(published_at, last_seen_at) >= ?
+         ORDER BY last_seen_at DESC
+         LIMIT 120`
+      )
+      .all(minFetchedAtIso);
+
+    const candidate = recentRows
+      .map((row) => ({
+        row,
+        similarity: titleSimilarity(signal.title ?? "", row.title)
+      }))
+      .filter((entry) => entry.similarity >= 0.9)
+      .sort((left, right) => right.similarity - left.similarity || right.row.source_authority - left.row.source_authority)[0];
+
+    if (!candidate) {
+      return null;
+    }
+
+    return {
+      itemId: candidate.row.id,
+      matchType: "title_similarity",
+      boostScore: 2
+    };
+  }
+
   private insertItemSource(itemId: number, input: SourceItemInput, sourceUrl: string, originalUrl: string | null): void {
+    const sourceLayer = input.sourceLayer ?? inferSourceLayer(input.sourceId, input.sourceType);
     this.db
       .prepare(
         `INSERT OR IGNORE INTO item_sources (
-          item_id, source_id, source_type, source_label, external_id, source_url, original_url,
+          item_id, source_id, source_type, source_layer, source_label, external_id, source_url, original_url,
           title, published_at, fetched_at, payload_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         itemId,
         input.sourceId,
         input.sourceType,
+        sourceLayer,
         input.sourceLabel,
         input.externalId,
         sourceUrl,
@@ -682,6 +957,7 @@ export class NewsDatabase {
       normalizedTitle: row.normalized_title,
       titleHash: row.title_hash,
       sourceType: row.source_type as NormalizedItemRecord["sourceType"],
+      primarySourceLayer: row.primary_source_layer as SourceLayer,
       primarySourceId: row.primary_source_id as NormalizedItemRecord["primarySourceId"],
       primarySourceLabel: row.primary_source_label,
       sourceAuthority: row.source_authority,
@@ -706,7 +982,8 @@ export class NewsDatabase {
       keywords: JSON.parse(row.keywords_json),
       lastSentAt: row.last_sent_at,
       crossSignalCount: row.cross_signal_count ?? 1,
-      sources: this.getItemSources(row.id)
+      sources: this.getItemSources(row.id),
+      matchedSignals: this.getSignalMatchesForItem(row.id)
     };
   }
 }
@@ -727,6 +1004,7 @@ function mergeExistingItem(
   const primarySourceShouldSwitch =
     input.sourceAuthority > existing.source_authority ||
     (input.sourceType === "openai_official" && existing.source_type !== "openai_official");
+  const sourceLayer = input.sourceLayer ?? inferSourceLayer(input.sourceId, input.sourceType);
 
   const mergedMetadata = mergeRecords(currentMetadata, payloadMetadata);
   const mergedKeywords = uniqueStrings([...(currentKeywords ?? []), ...(input.keywords ?? [])]);
@@ -748,6 +1026,7 @@ function mergeExistingItem(
     normalized_title: primarySourceShouldSwitch ? normalizeTitle(incomingTitle) : existing.normalized_title,
     title_hash: primarySourceShouldSwitch ? sha256Hex(normalizeTitle(incomingTitle)) : existing.title_hash,
     source_type: primarySourceShouldSwitch ? input.sourceType : existing.source_type,
+    primary_source_layer: primarySourceShouldSwitch ? sourceLayer : existing.primary_source_layer,
     primary_source_id: primarySourceShouldSwitch ? input.sourceId : existing.primary_source_id,
     primary_source_label: primarySourceShouldSwitch ? input.sourceLabel : existing.primary_source_label,
     source_authority: Math.max(existing.source_authority, input.sourceAuthority),
@@ -864,6 +1143,24 @@ function mapDigestEnrichmentRow(row: DigestEnrichmentRow): DigestThemeEnrichment
   };
 }
 
+function mapSignalEventRow(row: SignalEventRow): SignalEventRecord {
+  return {
+    id: row.signal_id ?? row.id ?? 0,
+    sourceId: row.source_id as SignalEventRecord["sourceId"],
+    sourceLayer: row.source_layer as SignalEventRecord["sourceLayer"],
+    actorLabel: row.actor_label,
+    actorHandle: row.actor_handle,
+    postUrl: row.post_url,
+    linkedUrl: row.linked_url,
+    title: row.title,
+    excerpt: row.excerpt,
+    publishedAt: row.published_at,
+    fetchedAt: row.fetched_at,
+    metrics: JSON.parse(row.metrics_json),
+    metadata: JSON.parse(row.metadata_json)
+  };
+}
+
 interface ExistingItemRow {
   id: number;
   canonical_url: string;
@@ -871,6 +1168,7 @@ interface ExistingItemRow {
   normalized_title: string;
   title_hash: string;
   source_type: string;
+  primary_source_layer: string;
   primary_source_id: string;
   primary_source_label: string;
   source_authority: number;
@@ -905,6 +1203,7 @@ interface ItemSourceRow {
   item_id: number;
   source_id: string;
   source_type: string;
+  source_layer: string;
   source_label: string;
   external_id: string;
   source_url: string;
@@ -951,4 +1250,29 @@ interface DigestEnrichmentRow {
   prompt_version: string;
   themes_json: string;
   created_at: string;
+}
+
+interface SignalEventRow {
+  id?: number;
+  signal_id?: number;
+  source_id: string;
+  source_layer: string;
+  actor_label: string;
+  actor_handle?: string | null;
+  post_url: string;
+  linked_url?: string | null;
+  title?: string | null;
+  excerpt?: string | null;
+  published_at?: string | null;
+  fetched_at: string;
+  metrics_json: string;
+  metadata_json: string;
+}
+
+interface SignalMatchRow extends SignalEventRow {
+  match_id: number;
+  signal_event_id: number;
+  item_id: number;
+  match_type: string;
+  boost_score: number;
 }

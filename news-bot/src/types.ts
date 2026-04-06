@@ -1,10 +1,21 @@
-export type SourceId = "geeknews" | "openai_news" | "github_trending";
+export type SourceId =
+  | "geeknews"
+  | "openai_news"
+  | "github_trending"
+  | "techmeme"
+  | "hacker_news"
+  | "bluesky_watch";
+
+export type SourceLayer = "primary" | "precision" | "early_warning";
 
 export type SourceType =
   | "openai_official"
   | "geeknews"
   | "github_trending"
-  | "vendor_official";
+  | "vendor_official"
+  | "techmeme"
+  | "hacker_news"
+  | "social_signal";
 
 export type DigestMode = "am" | "pm" | "manual";
 
@@ -34,6 +45,7 @@ export type ItemKind =
 export interface SourceItemInput {
   sourceId: SourceId;
   sourceType: SourceType;
+  sourceLayer?: SourceLayer;
   sourceLabel: string;
   sourceAuthority: number;
   externalId: string;
@@ -63,6 +75,7 @@ export interface ItemSourceRecord {
   itemId: number;
   sourceId: SourceId;
   sourceType: SourceType;
+  sourceLayer: SourceLayer;
   sourceLabel: string;
   externalId: string;
   sourceUrl: string;
@@ -73,6 +86,46 @@ export interface ItemSourceRecord {
   payload: unknown;
 }
 
+export interface SignalEventInput {
+  sourceId: Extract<SourceId, "bluesky_watch">;
+  sourceLayer?: Extract<SourceLayer, "early_warning">;
+  actorLabel: string;
+  actorHandle?: string;
+  postUrl: string;
+  linkedUrl?: string | null;
+  title?: string;
+  excerpt?: string;
+  publishedAt?: string;
+  fetchedAt: string;
+  metrics?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+}
+
+export interface SignalEventRecord {
+  id: number;
+  sourceId: Extract<SourceId, "bluesky_watch">;
+  sourceLayer: Extract<SourceLayer, "early_warning">;
+  actorLabel: string;
+  actorHandle?: string | null;
+  postUrl: string;
+  linkedUrl?: string | null;
+  title?: string | null;
+  excerpt?: string | null;
+  publishedAt?: string | null;
+  fetchedAt: string;
+  metrics: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+}
+
+export interface SignalMatchRecord {
+  id: number;
+  signalEventId: number;
+  itemId: number;
+  matchType: "linked_url" | "title_similarity";
+  boostScore: number;
+  signal: SignalEventRecord;
+}
+
 export interface NormalizedItemRecord {
   id: number;
   canonicalUrl: string;
@@ -80,6 +133,7 @@ export interface NormalizedItemRecord {
   normalizedTitle: string;
   titleHash: string;
   sourceType: SourceType;
+  primarySourceLayer: SourceLayer;
   primarySourceId: SourceId;
   primarySourceLabel: string;
   sourceAuthority: number;
@@ -105,6 +159,7 @@ export interface NormalizedItemRecord {
   lastSentAt?: string | null;
   crossSignalCount: number;
   sources: ItemSourceRecord[];
+  matchedSignals: SignalMatchRecord[];
 }
 
 export interface SourceRunSummary {
@@ -123,6 +178,8 @@ export interface ScoreBreakdown {
   methodologyScore: number;
   tractionScore: number;
   crossSignalScore: number;
+  precisionSignalScore: number;
+  earlyWarningScore: number;
   resendPenalty: number;
   matchedKeywords: string[];
   reasons: string[];
@@ -148,6 +205,7 @@ export interface DigestEntry {
   score: number;
   scoreReasons: string[];
   sourceLinks: Array<{ label: string; url: string }>;
+  signalLinks?: Array<{ label: string; url: string }>;
   openaiCategory?: OpenAICategory | null;
   repoLanguage?: string | null;
   repoStarsToday?: number | null;
@@ -232,4 +290,9 @@ export interface DigestThemeEnrichmentRecord {
   promptVersion: string;
   themes: string[];
   createdAt: string;
+}
+
+export interface BlueskyWatchActor {
+  label: string;
+  handle: string;
 }

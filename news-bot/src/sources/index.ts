@@ -2,9 +2,12 @@ import { DateTime } from "luxon";
 import type { AppConfig } from "../config.js";
 import { NewsDatabase } from "../db.js";
 import type { SourceRunSummary } from "../types.js";
+import { fetchBlueskySignalEvents } from "./blueskySignals.js";
 import { fetchGeekNewsItems } from "./geeknews.js";
 import { fetchGithubTrendingItems } from "./githubTrending.js";
+import { fetchHackerNewsItems } from "./hackerNews.js";
 import { fetchOpenAiNewsItems } from "./openaiNews.js";
+import { fetchTechmemeItems } from "./techmeme.js";
 
 export async function collectAndStoreSources(
   db: NewsDatabase,
@@ -12,7 +15,7 @@ export async function collectAndStoreSources(
   now: DateTime
 ): Promise<SourceRunSummary[]> {
   const fetchedAt = now.toUTC().toISO() ?? new Date().toISOString();
-  const tasks = [
+  const primaryAndPrecisionTasks = [
     {
       sourceId: "geeknews" as const,
       fetcher: () => fetchGeekNewsItems(config, fetchedAt)
@@ -24,12 +27,20 @@ export async function collectAndStoreSources(
     {
       sourceId: "github_trending" as const,
       fetcher: () => fetchGithubTrendingItems(config, fetchedAt)
+    },
+    {
+      sourceId: "techmeme" as const,
+      fetcher: () => fetchTechmemeItems(config, fetchedAt)
+    },
+    {
+      sourceId: "hacker_news" as const,
+      fetcher: () => fetchHackerNewsItems(config, fetchedAt)
     }
   ];
 
   const summaries: SourceRunSummary[] = [];
 
-  for (const task of tasks) {
+  for (const task of primaryAndPrecisionTasks) {
     const runId = db.startSourceRun(task.sourceId, fetchedAt);
     try {
       const items = await task.fetcher();
@@ -56,6 +67,30 @@ export async function collectAndStoreSources(
       db.finishSourceRun(runId, summary);
       summaries.push(summary);
     }
+  }
+
+  const signalRunId = db.startSourceRun("bluesky_watch", fetchedAt);
+  try {
+    const events = await fetchBlueskySignalEvents(config, fetchedAt);
+    db.saveSignalEvents(events);
+    db.matchRecentSignalEvents(now.toUTC().minus({ hours: config.sourcing.signalWindowHours }).toISO() ?? fetchedAt);
+
+    const summary: SourceRunSummary = {
+      sourceId: "bluesky_watch",
+      itemsFetched: events.length,
+      itemsNormalized: 0
+    };
+    db.finishSourceRun(signalRunId, summary);
+    summaries.push(summary);
+  } catch (error) {
+    const summary: SourceRunSummary = {
+      sourceId: "bluesky_watch",
+      itemsFetched: 0,
+      itemsNormalized: 0,
+      errors: [error instanceof Error ? error.message : String(error)]
+    };
+    db.finishSourceRun(signalRunId, summary);
+    summaries.push(summary);
   }
 
   return summaries;
