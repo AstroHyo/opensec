@@ -1,55 +1,67 @@
 # OpenSec AI News Brief
 
-Deterministic single-user AI news briefing bot for a Linux VPS. It fetches AI/news/tooling signals locally, stores them in SQLite, renders Korean Telegram-ready digests, and exposes follow-up commands through OpenClaw.
+Deterministic single-user AI news briefing bot for OpenClaw and Telegram. It fetches curated AI and tooling signals locally, stores state in SQLite, renders Korean digests, and supports follow-up questions from stored digest context.
 
 ## What it does
-- Fetches and normalizes:
-  - OpenAI official news via `https://openai.com/news/rss.xml`
-  - GitHub Trending overall + `python` + `typescript` + `javascript` + `rust`
-  - GeekNews / `https://news.hada.io/rss/news`
-  - Techmeme homepage clusters
-  - Hacker News via `topstories` + `newstories`
-  - Bluesky watchlist signals as an optional early-warning layer
-- Deduplicates with:
+
+- Fetches from three source layers:
+  - `primary`: OpenAI official RSS, GitHub Trending
+  - `precision`: GeekNews, Techmeme, Hacker News
+  - `early_warning`: Bluesky watchlist signals
+- Normalizes and deduplicates by:
   - canonical URL normalization
-  - normalized title hash
+  - normalized title hashing
   - fuzzy title similarity fallback
-- Stores local state in SQLite:
-  - `raw_items`
-  - `normalized_items`
-  - `digests`
-  - `sent_items`
-  - `followup_context`
-  - `source_runs`
-- Scores by:
+- Persists local state in SQLite for:
+  - raw fetches
+  - normalized items
+  - digest history
+  - resend suppression
+  - follow-up context
+  - early-warning signal events and matches
+- Scores deterministically with:
   - source authority
   - freshness
-  - user-interest keywords
+  - keyword and methodology matches
   - repo traction
-  - methodology boost
-  - OpenAI official priority
-  - cross-signal boost
-- Suppresses resend for 72 hours by default.
-- Supports follow-up commands from Telegram or shell:
-  - `brief now`
-  - `am brief now`
-  - `pm brief now`
-  - `openai only`
-  - `repo radar`
-  - `expand N`
-  - `show sources for N`
-  - `why important N`
-  - `today themes`
-  - `ask <질문>`
-  - `research <질문>`
-- Optionally enriches selected digest items with OpenAI for:
-  - more natural Korean summaries
-  - sharper `왜 중요한지`
-  - better day-level theme bullets
-  - post-digest `ask` answers over stored evidence
-  - opt-in `research` answers with live web search and cited links
+  - precision-layer boosts
+  - early-warning boosts
+  - cross-signal boosts
+- Renders Telegram-ready Korean digests with preserved evidence:
+  - canonical link
+  - source labels
+  - source link list
+  - score reasons
+  - optional signal links
+- Supports follow-up modes:
+  - deterministic commands such as `show sources for 2`
+  - bounded LLM explanation with `ask <질문>`
+  - opt-in live web research with `research <질문>`
+
+## Core rules
+
+- Daily digest generation stays deterministic.
+- Precision sources may introduce or strengthen candidates.
+- Early-warning sources never create standalone digest items.
+- LLMs are optional explanation and research layers, not the retrieval core.
+- Original evidence is preserved even when summaries are enriched.
+
+## Supported commands
+
+- `brief now`
+- `am brief now`
+- `pm brief now`
+- `openai only`
+- `repo radar`
+- `expand N`
+- `show sources for N`
+- `why important N`
+- `today themes`
+- `ask <질문>`
+- `research <질문>`
 
 ## Project layout
+
 ```text
 news-bot/
   package.json
@@ -74,14 +86,20 @@ news-bot/
       renderTelegram.ts
     sources/
       index.ts
-      geeknews.ts
+      layers.ts
+      relevance.ts
       openaiNews.ts
       githubTrending.ts
-      optional/
-        README.md
+      geeknews.ts
+      techmeme.ts
+      hackerNews.ts
+      blueskySignals.ts
+      blueskyWatchlist.ts
     commands/
       runDigest.ts
       followup.ts
+      followupAnswer.ts
+      followupResearch.ts
     util/
       canonicalize.ts
       dedupe.ts
@@ -90,71 +108,112 @@ news-bot/
       timeWindow.ts
   tests/
     dedupe.test.ts
-    scoring.test.ts
+    followup.test.ts
     render.test.ts
+    scoring.test.ts
+    sourcingLayers.test.ts
 skills/
   ai_news_brief/
     SKILL.md
 ```
 
 ## Setup
+
 1. Install dependencies.
    ```bash
-   cd /opt/ai-news-brief/news-bot
-   pnpm install
+   pnpm --dir ./news-bot install
    ```
-   If pnpm blocks native build scripts, approve:
+2. Create local environment variables.
    ```bash
-   pnpm approve-builds
+   cp ./news-bot/.env.example ./news-bot/.env
    ```
-   Approve `better-sqlite3` and `esbuild`.
-2. Configure secrets.
-   ```bash
-   cp .env.example .env
-   ```
-3. Fill in:
+3. Fill in the required values:
    - `NEWS_BOT_TELEGRAM_USER_ID`
    - `TELEGRAM_BOT_TOKEN`
    - optionally `OPENAI_API_KEY`
-4. Run quick validation.
+4. Run validation.
    ```bash
-   pnpm test
-   ./scripts/dry-run-am.sh
-   ./scripts/dry-run-pm.sh
+   pnpm --dir ./news-bot check
+   pnpm --dir ./news-bot test
+   bash ./news-bot/scripts/dry-run-am.sh
+   bash ./news-bot/scripts/dry-run-pm.sh
    ```
-5. Optional LLM follow-up tuning:
-   - `NEWS_BOT_LLM_MODEL_SUMMARY`
-   - `NEWS_BOT_LLM_MODEL_THEMES`
-   - `NEWS_BOT_LLM_MODEL_RESEARCH`
+
+## Environment variables
+
+Base configuration:
+
+- `NEWS_BOT_TIMEZONE`
+- `NEWS_BOT_LANGUAGE`
+- `NEWS_BOT_DB_PATH`
+- `NEWS_BOT_HTTP_TIMEOUT_MS`
+- `NEWS_BOT_TELEGRAM_USER_ID`
+- `TELEGRAM_BOT_TOKEN`
+
+Precision and signal sourcing:
+
+- `NEWS_BOT_HN_TOP_LIMIT`
+- `NEWS_BOT_HN_NEW_LIMIT`
+- `NEWS_BOT_BLUESKY_ENABLED`
+- `NEWS_BOT_SIGNAL_WINDOW_HOURS`
+- `NEWS_BOT_BLUESKY_MAX_POSTS_PER_ACTOR`
+
+Optional LLM behavior:
+
+- `OPENAI_API_KEY`
+- `NEWS_BOT_LLM_ENABLED`
+- `NEWS_BOT_LLM_THEMES_ENABLED`
+- `NEWS_BOT_LLM_RERANK_ENABLED`
+- `NEWS_BOT_LLM_MODEL_SUMMARY`
+- `NEWS_BOT_LLM_MODEL_THEMES`
+- `NEWS_BOT_LLM_MODEL_RESEARCH`
+- `NEWS_BOT_LLM_TIMEOUT_MS`
+- `NEWS_BOT_LLM_MAX_ITEMS_AM`
+- `NEWS_BOT_LLM_MAX_ITEMS_PM`
+
+Bluesky ships disabled by default, and the checked-in watchlist starts empty. Populate [`src/sources/blueskyWatchlist.ts`](./src/sources/blueskyWatchlist.ts) only when you want explicit early-warning actors.
 
 ## Local commands
-- Fetch latest source state only:
-  ```bash
-  pnpm run fetch
-  ```
-- Run AM digest now:
-  ```bash
-  pnpm run digest:am
-  ```
-- Run PM digest now:
-  ```bash
-  pnpm run digest:pm
-  ```
-- Ask a follow-up against stored context:
-  ```bash
-  pnpm run followup -- "show sources for 2"
-  ```
-- Ask for a richer stored-evidence explanation:
-  ```bash
-  pnpm run followup -- "ask 오늘 OpenAI 뉴스만 우리 관점으로 다시 요약해줘"
-  ```
-- Run opt-in live research with citations:
-  ```bash
-  pnpm run followup -- "research 2번 뉴스 관련 최신 공식 반응까지 찾아줘"
-  ```
 
-## OpenClaw Telegram config
-Patch your OpenClaw config with the confirmed Telegram keys shown in [`openclaw.telegram.example.jsonc`](./openclaw.telegram.example.jsonc):
+Fetch the latest source state only:
+
+```bash
+pnpm --dir ./news-bot fetch
+```
+
+Run the digest manually:
+
+```bash
+pnpm --dir ./news-bot digest:am
+pnpm --dir ./news-bot digest:pm
+```
+
+Run follow-up commands:
+
+```bash
+pnpm --dir ./news-bot followup "show sources for 2"
+pnpm --dir ./news-bot followup "ask 오늘 OpenAI 뉴스만 우리 관점으로 다시 요약해줘"
+pnpm --dir ./news-bot followup "research 2번 뉴스 관련 최신 공식 반응까지 찾아줘"
+```
+
+## Follow-up behavior
+
+`ask`:
+
+- uses stored digest evidence only
+- can explain, compare, or reframe items more naturally
+- falls back cleanly when LLM is disabled
+
+`research`:
+
+- runs only when the user explicitly asks
+- can use bounded live web search with citations
+- can reuse stored unmatched Bluesky URL signals as hints
+- must not change how the daily digest itself is generated
+
+## OpenClaw and Telegram
+
+Patch your OpenClaw Telegram config with the shape shown in [`openclaw.telegram.example.jsonc`](./openclaw.telegram.example.jsonc):
 
 ```jsonc
 {
@@ -179,82 +238,50 @@ Patch your OpenClaw config with the confirmed Telegram keys shown in [`openclaw.
 ```
 
 Notes:
-- `dmPolicy: "allowlist"` plus `allowFrom` makes the bot single-owner.
+
+- `dmPolicy: "allowlist"` plus `allowFrom` keeps the bot single-owner.
 - Start or attach OpenClaw in the workspace root so `skills/ai_news_brief/SKILL.md` is available.
+- The current EC2 deployment path is `/srv/openclaw/workspace-personal/projects/opensec-ai-news-brief`.
 
-## Exact cron commands
-The helper script wraps these exact commands:
+## Installing cron jobs
 
-```bash
-  openclaw cron add \
-  --name "AI News Brief AM" \
-  --cron "0 10 * * *" \
-  --tz "America/New_York" \
-  --session isolated \
-  --expect-final \
-  --timeout-seconds 600 \
-  --announce \
-  --channel telegram \
-  --to "$TELEGRAM_USER_ID" \
-  --message "Use the ai_news_brief skill in the workspace at /opt/ai-news-brief. Run \`pnpm --dir /opt/ai-news-brief/news-bot digest:am\` via exec. Return only the script output so it can be sent to Telegram as-is. Do not browse the web manually unless the script fails."
-
-openclaw cron add \
-  --name "AI News Brief PM" \
-  --cron "0 20 * * *" \
-  --tz "America/New_York" \
-  --session isolated \
-  --expect-final \
-  --timeout-seconds 600 \
-  --announce \
-  --channel telegram \
-  --to "$TELEGRAM_USER_ID" \
-  --message "Use the ai_news_brief skill in the workspace at /opt/ai-news-brief. Run \`pnpm --dir /opt/ai-news-brief/news-bot digest:pm\` via exec. Return only the script output so it can be sent to Telegram as-is. Do not browse the web manually unless the script fails."
-```
-
-Or run:
+Use the helper script:
 
 ```bash
-TELEGRAM_USER_ID=123456789 ./scripts/install-cron.sh
+TELEGRAM_USER_ID=123456789 bash ./news-bot/scripts/install-cron.sh
 ```
+
+The script computes the workspace root and `news-bot` path automatically, so you do not need to hard-code `/opt/ai-news-brief`. It installs:
+
+- `AI News Brief AM` at `10:00` America/New_York
+- `AI News Brief PM` at `20:00` America/New_York
+
+Each cron prompt tells OpenClaw to run the local `pnpm --dir <news-bot-path> digest:am|pm` command via `exec` and return only the script output.
 
 ## Telegram setup
+
 1. Create a bot with `@BotFather`.
 2. Put the token in `TELEGRAM_BOT_TOKEN`.
 3. DM the bot once from your personal account.
-4. Get your numeric user ID.
-   - A quick way is to inspect the update payload from Telegram or use any trusted ID helper bot.
-5. Put the ID in:
+4. Get your numeric Telegram user ID.
+5. Set that ID in:
    - `NEWS_BOT_TELEGRAM_USER_ID`
    - OpenClaw `allowFrom`
    - `TELEGRAM_USER_ID` when installing cron
 
 ## Design choices
-- OpenAI uses the official RSS feed because the HTML newsroom is Cloudflare-protected in headless VPS contexts. The adapter still preserves newsroom section labels and URLs.
-- GeekNews, Techmeme, and Hacker News act as precision discovery signals. They help ranking and candidate discovery, but they are not treated as primary truth sources by themselves.
-- GitHub Trending is filtered for AI/tooling relevance, so novelty repos do not make Repo Radar just because they are popular.
-- Bluesky is watchlist-based, disabled by default, and only boosts or annotates existing stories. It never creates standalone digest items.
-- The daily digest does not depend on live model discovery.
-- LLM enrichment is optional and runs only after deterministic fetch, dedupe, ranking, and item selection.
-- Live `research` is opt-in and happens only after the digest has already been generated.
 
-## Dry-run examples
-- AM:
-  ```bash
-  ./scripts/dry-run-am.sh
-  ```
-- PM:
-  ```bash
-  ./scripts/dry-run-pm.sh
-  ```
+- OpenAI uses the official RSS feed because the newsroom HTML is unreliable behind Cloudflare in headless VPS environments.
+- GeekNews, Techmeme, and Hacker News are precision signals. They help discovery and ranking, but they are not treated as primary truth by themselves.
+- Bluesky is watchlist-based, disabled by default, and only boosts or annotates already-matched stories.
+- The digest can ship without any LLM.
+- LLM enrichment runs only after deterministic fetch, merge, ranking, and item selection.
+- Live `research` is opt-in and happens after the digest already exists.
 
-## TODOs you must fill in
-- Telegram bot token
-- Telegram numeric owner user ID
-- Actual VPS install path used in cron prompts if not `/opt/ai-news-brief`
-- OpenClaw config merge in the correct host profile
+## Acceptance checks
 
-## Acceptance checks covered
-- `./scripts/dry-run-am.sh`
-- `./scripts/dry-run-pm.sh`
-- `pnpm test`
-- `pnpm run followup -- "show sources for 2"`
+- `pnpm --dir ./news-bot check`
+- `pnpm --dir ./news-bot test`
+- `bash ./news-bot/scripts/dry-run-am.sh`
+- `bash ./news-bot/scripts/dry-run-pm.sh`
+- `pnpm --dir ./news-bot followup "show sources for 2"`
