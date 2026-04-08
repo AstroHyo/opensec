@@ -80,3 +80,5 @@ Requires DM approval plus a second explicit confirmation.
 
 - Add durable preferences to `MEMORY.md` only when they are stable.
 - Put short-lived notes under `memory/`.
+- Use `memory_ops` for daily-note capture and candidate distillation.
+- Treat edits to `MEMORY.md` as deliberate, review-worthy changes, not casual logging.

@@ -26,13 +26,21 @@ Heartbeat may:
 - suggest cleanup for stale research or coding threads
 - suggest durable-memory candidates from daily notes
 
+If using daily-note memory capture:
+
+1. ensure today's note exists
+2. review recent `memory/YYYY-MM-DD.md` notes
+3. add concise candidate bullets under `## Promotion Candidates`
+4. surface candidates for review in DM or `#assistant`
+
 Heartbeat must not:
 
 - start new research on its own
 - publish public summaries first
 - mutate code
-- auto-promote memory
+- auto-promote memory into `MEMORY.md`
 - proactively broadcast finance or market commentary
+- copy private DM details into shared channels
 
 Escalation targets:
 

@@ -251,6 +251,14 @@ It uses:
 - `MEMORY.md` for durable facts
 - `memory/YYYY-MM-DD.md` for daily context
 
+Recommended loop:
+
+1. capture meaningful Discord context into the daily note
+2. rewrite repeated or stable signals into promotion candidates
+3. move only approved durable facts into `MEMORY.md`
+
+This keeps private durable memory smaller and higher-signal than raw daily context.
+
 This is ideal for:
 
 - your preferences

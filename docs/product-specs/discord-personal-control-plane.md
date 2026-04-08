@@ -108,3 +108,29 @@ It should remain off until:
 - routing rules have stopped changing frequently
 
 When later enabled, heartbeat may only do low-noise awareness checks.
+
+## Memory Loop
+
+Discord conversations should not be dumped directly into `MEMORY.md`.
+
+The intended behavior is:
+
+- meaningful conversations can be captured into `memory/YYYY-MM-DD.md`
+- repeated or durable signals can be rewritten as `Promotion Candidates`
+- `MEMORY.md` should only receive approved stable facts
+
+Examples of things that belong in daily notes first:
+
+- new repo aliases
+- fresh workflow ideas
+- short-lived deployment context
+- one-day research residue
+
+Examples of things that may later belong in `MEMORY.md`:
+
+- stable communication preferences
+- durable repo naming conventions
+- recurring approval expectations
+- long-lived server or deployment facts
+
+Heartbeat may help propose candidates, but it must not silently promote them.

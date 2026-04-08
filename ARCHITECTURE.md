@@ -184,6 +184,21 @@ Bootstrap files now have stricter separation:
 - `memory/YYYY-MM-DD.md`: raw notes
 - `HEARTBEAT.md`: heartbeat-only behavior
 
+## Memory Loop
+
+Discord conversation memory should use a two-stage loop:
+
+1. capture meaningful context into `memory/YYYY-MM-DD.md`
+2. distill only stable facts into `MEMORY.md`
+
+Rules:
+
+- not every chat turn becomes memory
+- daily notes are the raw capture layer
+- `MEMORY.md` is the curated durable layer
+- heartbeat may suggest promotion candidates
+- heartbeat must not silently promote memory
+
 ## Heartbeat Policy
 
 Heartbeat is intentionally off by default.

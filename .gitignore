@@ -5,6 +5,7 @@
 .env
 .env.*
 !.env.example
+discord-secrets.txt
 
 # Node / pnpm
 node_modules/
@@ -23,4 +24,3 @@ coverage/
 
 # Vitest / temp output
 .vitest/
-

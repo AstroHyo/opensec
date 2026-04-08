@@ -25,6 +25,7 @@ copy_if_missing "$REPO_ROOT/workspace-template/TOOLS.md" "$WORKSPACE_ROOT/TOOLS.
 copy_if_missing "$REPO_ROOT/workspace-template/USER.md" "$WORKSPACE_ROOT/USER.md"
 copy_if_missing "$REPO_ROOT/workspace-template/MEMORY.md" "$WORKSPACE_ROOT/MEMORY.md"
 copy_if_missing "$REPO_ROOT/workspace-template/HEARTBEAT.md" "$WORKSPACE_ROOT/HEARTBEAT.md"
+copy_if_missing "$REPO_ROOT/workspace-template/memory/README.md" "$WORKSPACE_ROOT/memory/README.md"
 
 sync_skill_dir() {
   local src="$1"
@@ -36,6 +37,7 @@ sync_skill_dir() {
 
 sync_skill_dir "$REPO_ROOT/skills/ai_news_brief" "$WORKSPACE_ROOT/skills/ai_news_brief"
 sync_skill_dir "$REPO_ROOT/skills/code_ops" "$WORKSPACE_ROOT/skills/code_ops"
+sync_skill_dir "$REPO_ROOT/skills/memory_ops" "$WORKSPACE_ROOT/skills/memory_ops"
 sync_skill_dir "$REPO_ROOT/skills/repo_ops" "$WORKSPACE_ROOT/skills/repo_ops"
 sync_skill_dir "$REPO_ROOT/skills/system_ops" "$WORKSPACE_ROOT/skills/system_ops"
 

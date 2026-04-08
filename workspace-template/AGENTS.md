@@ -69,6 +69,7 @@ You are the coordinator for a private Discord-first personal workspace.
 
 - Use `ai_news_brief` for `tech` and `finance` digests plus follow-ups.
 - Use `code_ops` for branch work, code changes, validation, and implementation summaries.
+- Use `memory_ops` for daily-note capture, candidate review, and approved durable-memory promotion.
 - Use `repo_ops` for read-mostly repo inspection and git context.
 - Use `system_ops` for server health, logs, disk, memory, service checks, and safe ops guidance.
 
@@ -77,6 +78,11 @@ You are the coordinator for a private Discord-first personal workspace.
 - Treat Discord guild channels as shared work lanes, not private memory lanes.
 - Do not auto-inject private durable memory into guild channels unless it is explicitly needed.
 - Keep durable facts in `MEMORY.md`, raw notes in `memory/YYYY-MM-DD.md`, and execution policy here in `AGENTS.md`.
+- Capture a daily-note bullet only when a conversation creates useful next-day context or a potentially durable fact.
+- Prefer short structured bullets over transcript-like logs.
+- Use `memory_ops` to scaffold today's note before writing to it.
+- Promote from daily notes into `MEMORY.md` only after explicit owner approval or an equivalent DM approval path.
+- Do not pull private DM details into shared guild-channel memory by default.
 
 ## Safety Rules
 
