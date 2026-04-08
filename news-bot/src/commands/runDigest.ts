@@ -6,10 +6,12 @@ import { loadConfig } from "../config.js";
 import { NewsDatabase } from "../db.js";
 import { buildDigest } from "../digest/buildDigest.js";
 import { maybeEnrichDigest } from "../llm/enrichDigest.js";
+import { PROFILE_KEYS } from "../profiles.js";
 import { collectAndStoreSources } from "../sources/index.js";
-import type { DigestBuildResult, SourceItemInput } from "../types.js";
+import type { DigestBuildResult, ProfileKey, SourceItemInput } from "../types.js";
 
 export interface RunDigestOptions {
+  profileKey?: ProfileKey;
   mode: "am" | "pm" | "manual";
   nowIso?: string;
   dbPathOverride?: string;
@@ -20,10 +22,12 @@ export interface RunDigestOptions {
 
 export async function runDigestFlow(options: RunDigestOptions): Promise<{
   config: AppConfig;
+  profileKey: ProfileKey;
   digest: DigestBuildResult;
   db: NewsDatabase;
 }> {
   const config = loadConfig(process.cwd());
+  const profileKey = options.profileKey ?? config.defaultProfile;
   const dbPath = options.dbPathOverride ? path.resolve(process.cwd(), options.dbPathOverride) : config.dbPath;
 
   if (options.resetDb && dbPath !== ":memory:" && fs.existsSync(dbPath)) {
@@ -40,12 +44,13 @@ export async function runDigestFlow(options: RunDigestOptions): Promise<{
   }
 
   if (!options.skipFetch) {
-    await collectAndStoreSources(db, config, now);
+    await collectAndStoreSources(db, config, now, profileKey);
   }
 
   const digest = buildDigest({
     db,
     config,
+    profileKey,
     mode: options.mode,
     now
   });
@@ -57,11 +62,12 @@ export async function runDigestFlow(options: RunDigestOptions): Promise<{
     now
   });
 
-  db.saveDigest(digest, now.toUTC().toISO() ?? new Date().toISOString());
-  return { config, digest, db };
+  db.saveDigest(profileKey, digest, now.toUTC().toISO() ?? new Date().toISOString());
+  return { config, profileKey, digest, db };
 }
 
 export async function runFetchOnly(options: {
+  profileKey?: ProfileKey;
   nowIso?: string;
   dbPathOverride?: string;
   resetDb?: boolean;
@@ -77,7 +83,13 @@ export async function runFetchOnly(options: {
     ? DateTime.fromISO(options.nowIso, { zone: config.timezone }).setZone(config.timezone)
     : DateTime.now().setZone(config.timezone);
 
-  await collectAndStoreSources(db, config, now);
+  if (options.profileKey) {
+    await collectAndStoreSources(db, config, now, options.profileKey);
+  } else {
+    for (const [index, profileKey] of PROFILE_KEYS.entries()) {
+      await collectAndStoreSources(db, config, now, profileKey, { includeEarlyWarning: index === 0 });
+    }
+  }
   return { config, db };
 }
 

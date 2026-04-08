@@ -1,6 +1,6 @@
 # OpenSec AI News Brief
 
-Deterministic single-user AI news briefing bot for OpenClaw and Telegram. It fetches curated AI and tooling signals locally, stores state in SQLite, renders Korean digests, and supports follow-up questions from stored digest context.
+Deterministic multi-profile news briefing engine for OpenClaw. It fetches curated signals locally, stores state in SQLite, renders Korean digests, and supports profile-aware follow-up from stored digest context. The primary control-plane target is now private Discord, with Telegram kept as a legacy/fallback delivery surface.
 
 ## What it does
 
@@ -19,6 +19,9 @@ Deterministic single-user AI news briefing bot for OpenClaw and Telegram. It fet
   - resend suppression
   - follow-up context
   - early-warning signal events and matches
+- Separates persisted context by profile:
+  - `tech`
+  - `finance`
 - Scores deterministically with:
   - source authority
   - freshness
@@ -27,7 +30,7 @@ Deterministic single-user AI news briefing bot for OpenClaw and Telegram. It fet
   - precision-layer boosts
   - early-warning boosts
   - cross-signal boosts
-- Renders Telegram-ready Korean digests with preserved evidence:
+- Renders channel-ready Korean digests with preserved evidence:
   - canonical link
   - source labels
   - source link list
@@ -41,6 +44,7 @@ Deterministic single-user AI news briefing bot for OpenClaw and Telegram. It fet
 ## Core rules
 
 - Daily digest generation stays deterministic.
+- Shared evidence can feed multiple profiles, but digest context is profile-scoped.
 - Precision sources may introduce or strengthen candidates.
 - Early-warning sources never create standalone digest items.
 - LLMs are optional explanation and research layers, not the retrieval core.
@@ -60,6 +64,13 @@ Deterministic single-user AI news briefing bot for OpenClaw and Telegram. It fet
 - `ask <질문>`
 - `research <질문>`
 
+CLI profile examples:
+
+- `pnpm --dir ./news-bot digest -- --profile tech --mode am`
+- `pnpm --dir ./news-bot digest -- --profile finance --mode am`
+- `pnpm --dir ./news-bot followup -- --profile tech "show sources for 2"`
+- `pnpm --dir ./news-bot followup -- --profile finance "ask 오늘 macro 항목만 다시 요약해줘"`
+
 ## Project layout
 
 ```text
@@ -74,12 +85,14 @@ news-bot/
   scripts/
     dry-run-am.sh
     dry-run-pm.sh
+    install-discord-cron.sh
     install-cron.sh
   src/
     index.ts
     config.ts
     db.ts
     types.ts
+    profiles.ts
     scoring.ts
     digest/
       buildDigest.ts
@@ -91,6 +104,7 @@ news-bot/
       openaiNews.ts
       githubTrending.ts
       geeknews.ts
+      financeSources.ts
       techmeme.ts
       hackerNews.ts
       blueskySignals.ts
@@ -109,6 +123,7 @@ news-bot/
   tests/
     dedupe.test.ts
     followup.test.ts
+    profileNamespaces.test.ts
     render.test.ts
     scoring.test.ts
     sourcingLayers.test.ts
@@ -128,8 +143,9 @@ skills/
    cp ./news-bot/.env.example ./news-bot/.env
    ```
 3. Fill in the required values:
-   - `NEWS_BOT_TELEGRAM_USER_ID`
-   - `TELEGRAM_BOT_TOKEN`
+   - `NEWS_BOT_DEFAULT_PROFILE`
+   - optionally `NEWS_BOT_TELEGRAM_USER_ID`
+   - optionally `TELEGRAM_BOT_TOKEN`
    - optionally `OPENAI_API_KEY`
 4. Run validation.
    ```bash
@@ -146,6 +162,7 @@ Base configuration:
 - `NEWS_BOT_TIMEZONE`
 - `NEWS_BOT_LANGUAGE`
 - `NEWS_BOT_DB_PATH`
+- `NEWS_BOT_DEFAULT_PROFILE`
 - `NEWS_BOT_HTTP_TIMEOUT_MS`
 - `NEWS_BOT_TELEGRAM_USER_ID`
 - `TELEGRAM_BOT_TOKEN`
@@ -178,22 +195,25 @@ Bluesky ships disabled by default, and the checked-in watchlist starts empty. Po
 Fetch the latest source state only:
 
 ```bash
-pnpm --dir ./news-bot fetch
+pnpm --dir ./news-bot fetch -- --profile tech
 ```
 
 Run the digest manually:
 
 ```bash
-pnpm --dir ./news-bot digest:am
-pnpm --dir ./news-bot digest:pm
+pnpm --dir ./news-bot digest -- --profile tech --mode am
+pnpm --dir ./news-bot digest -- --profile tech --mode pm
+pnpm --dir ./news-bot digest -- --profile finance --mode am
+pnpm --dir ./news-bot digest -- --profile finance --mode pm
 ```
 
 Run follow-up commands:
 
 ```bash
-pnpm --dir ./news-bot followup "show sources for 2"
-pnpm --dir ./news-bot followup "ask 오늘 OpenAI 뉴스만 우리 관점으로 다시 요약해줘"
-pnpm --dir ./news-bot followup "research 2번 뉴스 관련 최신 공식 반응까지 찾아줘"
+pnpm --dir ./news-bot followup -- --profile tech "show sources for 2"
+pnpm --dir ./news-bot followup -- --profile tech "ask 오늘 OpenAI 뉴스만 우리 관점으로 다시 요약해줘"
+pnpm --dir ./news-bot followup -- --profile finance "ask 오늘 macro 항목만 우리 관점으로 정리해줘"
+pnpm --dir ./news-bot followup -- --profile tech "research 2번 뉴스 관련 최신 공식 반응까지 찾아줘"
 ```
 
 ## Follow-up behavior
@@ -211,19 +231,17 @@ pnpm --dir ./news-bot followup "research 2번 뉴스 관련 최신 공식 반응
 - can reuse stored unmatched Bluesky URL signals as hints
 - must not change how the daily digest itself is generated
 
-## OpenClaw and Telegram
+## OpenClaw and Discord
 
-Patch your OpenClaw Telegram config with the shape shown in [`openclaw.telegram.example.jsonc`](./openclaw.telegram.example.jsonc):
+Patch your OpenClaw personal config with the Discord-first shape shown in [`../openclaw.personal.example.jsonc`](../openclaw.personal.example.jsonc):
 
 ```jsonc
 {
   "channels": {
-    "telegram": {
+    "discord": {
       "enabled": true,
-      "botToken": "123456789:replace-me",
-      "dmPolicy": "allowlist",
-      "allowFrom": ["123456789"],
-      "linkPreview": false
+      "token": "replace-me",
+      "groupPolicy": "allowlist"
     }
   },
   "cron": {
@@ -239,26 +257,32 @@ Patch your OpenClaw Telegram config with the shape shown in [`openclaw.telegram.
 
 Notes:
 
-- `dmPolicy: "allowlist"` plus `allowFrom` keeps the bot single-owner.
+- Keep one visible coordinator and let builder/researcher behavior stay hidden behind delegation.
 - Start or attach OpenClaw in the workspace root so `skills/ai_news_brief/SKILL.md` is available.
 - The current EC2 deployment path is `/srv/openclaw/workspace-personal/projects/opensec-ai-news-brief`.
 
-## Installing cron jobs
+## Installing Discord cron jobs
 
 Use the helper script:
 
 ```bash
-TELEGRAM_USER_ID=123456789 bash ./news-bot/scripts/install-cron.sh
+DISCORD_TECH_BRIEF_CHANNEL_ID=123456789012345678 \
+DISCORD_FINANCE_BRIEF_CHANNEL_ID=223456789012345678 \
+bash ./news-bot/scripts/install-discord-cron.sh
 ```
 
 The script computes the workspace root and `news-bot` path automatically, so you do not need to hard-code `/opt/ai-news-brief`. It installs:
 
-- `AI News Brief AM` at `10:00` America/New_York
-- `AI News Brief PM` at `20:00` America/New_York
+- `Tech Brief AM` at `10:00` America/New_York
+- `Tech Brief PM` at `20:00` America/New_York
+- `Finance Brief AM` at `10:30` America/New_York
+- `Finance Brief PM` at `20:30` America/New_York
 
-Each cron prompt tells OpenClaw to run the local `pnpm --dir <news-bot-path> digest:am|pm` command via `exec` and return only the script output.
+Each cron prompt tells OpenClaw to run the local profile-aware digest command via `exec` and return only the script output.
 
-## Telegram setup
+Legacy Telegram cron setup remains available through [`./scripts/install-cron.sh`](./scripts/install-cron.sh).
+
+## Legacy Telegram setup
 
 1. Create a bot with `@BotFather`.
 2. Put the token in `TELEGRAM_BOT_TOKEN`.
@@ -284,4 +308,4 @@ Each cron prompt tells OpenClaw to run the local `pnpm --dir <news-bot-path> dig
 - `pnpm --dir ./news-bot test`
 - `bash ./news-bot/scripts/dry-run-am.sh`
 - `bash ./news-bot/scripts/dry-run-pm.sh`
-- `pnpm --dir ./news-bot followup "show sources for 2"`
+- `pnpm --dir ./news-bot followup -- --profile tech "show sources for 2"`

@@ -5,7 +5,7 @@
 If your long-term goal is:
 
 - receiving news digests
-- asking for ad hoc tasks over Telegram DM
+- asking for ad hoc tasks over Discord
 - running repo work and infra tasks remotely
 - keeping memory and context across sessions
 
@@ -18,7 +18,7 @@ It should be set up as your personal AI control plane, with the news system as j
 Use OpenClaw for:
 
 - always-on gateway
-- Telegram DM access
+- Discord server access
 - durable memory and session history
 - tool orchestration
 - cron automation
@@ -35,19 +35,19 @@ This matches the official OpenClaw positioning: it is a personal assistant and c
 
 ## Recommended Topology
 
-### One Gateway, One Main Personal Agent
+### One Gateway, One Visible Coordinator
 
 Start with:
 
 - one OpenClaw gateway on the VPS
-- one main personal agent bound to your Telegram DM
+- one main personal agent bound to a private Discord guild
 - one stable personal workspace on the VPS
 
 Why:
 
 - simplest operations
 - one memory system
-- one Telegram relationship
+- one visible front door
 - fewer routing surprises
 
 ### News As A Skill, Not A Separate Product Brain
@@ -115,9 +115,9 @@ So the right design is:
 
 ## Recommended Agent Strategy
 
-### Phase 1: Single-Agent Mode
+### Phase 1: One Visible Agent, Hidden Specialists
 
-Start in single-agent mode.
+Start with one visible coordinator and keep builder/researcher behavior hidden behind delegation or thread-bound sessions.
 
 This gives you:
 
@@ -155,53 +155,40 @@ OpenClaw supports multiple isolated agents, each with separate workspace, state,
 
 But you do not need that on day one.
 
-## Telegram Strategy
+## Discord Strategy
 
-### One Telegram DM As Primary Front Door
+### Discord As Primary Front Door
 
-Bind your main Telegram bot/account to the main personal agent.
+Bind your main Discord bot to a private guild and keep one visible coordinator.
 
 Use:
 
-- `dmPolicy: "allowlist"`
-- numeric `allowFrom`
-- no public access
+- `groupPolicy: "allowlist"`
+- `requireMention: true`
+- private guild only
 
 This keeps the assistant private and durable.
 
-### Keep Telegram Menus Small
+### Use Channels As Work Lanes
 
-Telegram command menus can overflow.
+Recommended channels:
 
-So for a personal assistant setup:
+- `#assistant`
+- `#tech-brief`
+- `#finance-brief`
+- `#research`
+- `#coding`
 
-- keep native commands on if you like them
-- keep native skill registration conservative
-- rely mostly on typed DM instructions rather than a giant slash-command catalog
-
-Recommended direction:
-
-- keep `commands.text: true`
-- consider `channels.telegram.commands.nativeSkills: false` if menus get noisy
-- add only a few custom commands if they are truly frequent
-
-Examples of good typed interactions:
-
-- `brief now`
-- `openai only`
-- `pull latest from repo-a and summarize changes`
-- `check the server disk usage`
-- `run tests in opensec-ai-news-brief`
-- `summarize today's open loops`
+This keeps context narrower and makes routing much easier to reason about than one endless DM thread.
 
 ## Approval And Safety Model
 
-If the agent will run real host commands from Telegram DM, approval flow matters.
+If the agent will run real host commands from Discord, approval flow matters.
 
 Recommended:
 
-- enable Telegram exec approvals
-- approvals should go only to your own Telegram DM
+- enable Discord exec approvals
+- approvals should go only to your own DM
 - keep dangerous command execution gated
 
 Why:
@@ -216,30 +203,22 @@ This is a good starting shape for `~/.openclaw/openclaw.json`:
 
 ```jsonc
 {
-  agents: {
-    defaults: {
-      workspace: "/srv/openclaw/workspace-personal",
-      model: {
-        primary: "anthropic/claude-sonnet-4-6",
-        fallbacks: ["openai/gpt-5.2"]
-      }
-    }
-  },
   channels: {
-    telegram: {
+    discord: {
       enabled: true,
-      botToken: "123456789:replace-me",
-      dmPolicy: "allowlist",
-      allowFrom: ["123456789"],
-      linkPreview: false,
-      streaming: "partial",
-      commands: {
-        native: "auto",
-        nativeSkills: false
+      token: "replace-me",
+      groupPolicy: "allowlist",
+      guilds: {
+        "YOUR_SERVER_ID": {
+          requireMention: true,
+          channels: {
+            "YOUR_ASSISTANT_CHANNEL_ID": { allow: true }
+          }
+        }
       },
       execApprovals: {
-        enabled: true,
-        approvers: ["123456789"],
+        enabled: "auto",
+        approvers: ["YOUR_USER_ID"],
         target: "dm"
       }
     }
@@ -258,6 +237,7 @@ Notes:
 
 - the model refs above are examples from the official config docs, not a mandate
 - if you prefer another supported provider, keep the same structure
+- use one visible coordinator first; do not rush into many visible bots in one channel
 - keep the news app’s `OPENAI_API_KEY` separate from OpenClaw’s own provider configuration
 
 ## Memory Strategy
@@ -332,16 +312,16 @@ If you want coding-heavy DM workflows, the best setup is:
 
 In other words:
 
-- ask from Telegram DM
+- ask from Discord
 - OpenClaw routes intent
 - skill runs deterministic repo command or coding workflow
 - approval flow protects risky actions
 
 This gives you "Codex from DM" behavior in practice, even though OpenClaw itself is not trying to replace a dedicated local IDE loop.
 
-Examples of good Telegram DM asks:
+Examples of good Discord asks:
 
-- `create a branch in opensec-ai-news-brief and wire Telegram coding support`
+- `create a branch in opensec-ai-news-brief and wire Discord coding support`
 - `fix the failing test in repo-a and show me what changed`
 - `inspect the auth bug in repo-b, patch it, and run the narrowest relevant test`
 
@@ -371,7 +351,7 @@ Good reasons not to add a second gateway:
 
 If the goal is:
 
-- personal Telegram DM as command center
+- personal Discord server as command center
 - OpenSec news digests
 - future repo work and infra tasks
 - coding-capable assistant behavior
@@ -383,7 +363,7 @@ then the best long-term setup is:
 3. OpenSec repo cloned under `projects/`
 4. OpenSec exposed as a skill and cron job
 5. builtin memory first
-6. Telegram allowlist + exec approvals enabled
+6. Discord allowlist + DM approvals enabled
 7. add nodes later for laptop-local capabilities
 8. add second agent only when you truly need isolation
 
@@ -393,7 +373,7 @@ Do this:
 
 - OpenClaw as personal control plane
 - OpenSec as one project/skill inside that plane
-- Telegram DM as the single private front door
+- private Discord server as the single visible front door
 - one gateway, one main agent, one workspace
 
 Concrete repo helpers:

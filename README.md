@@ -2,9 +2,9 @@
 
 # OpenSec
 
-**A deterministic AI news briefing system for Telegram and OpenClaw**
+**A Discord-first personal control plane with deterministic multi-profile news briefs**
 
-Curated sources in. Ranked Korean digests out. Optional LLM enrichment on top of a local, evidence-preserving core.
+Curated sources in. Ranked Korean digests out. Optional LLM enrichment on top of a local, evidence-preserving core. One visible coordinator on Discord, with execution and research lanes behind it.
 
 [Korean README](./README_KR.md) • [Architecture](./ARCHITECTURE.md) • [Product Engine](./news-bot/README.md) • [DB Schema](./docs/generated/db-schema.md)
 
@@ -32,9 +32,11 @@ If an LLM is available, it improves explanation quality. If it is not, the diges
 | --- | --- |
 | Deterministic daily digest | Curated sources, normalization, dedupe, SQLite state, explicit scoring |
 | Evidence preserved by default | Canonical URL, source labels, source links, and score reasons stay attached |
-| Korean Telegram output | Digest text is optimized for concise Telegram delivery |
+| Multi-profile engine | Separate `tech` and `finance` profiles can share evidence but keep different digest context |
+| Discord-first control plane | Workspace assets target a private Discord server with one front door |
+| Plain-text digest output | Digest text stays channel-safe for Discord, Telegram, or shell delivery |
 | Optional LLM layer | Item enrichment, theme synthesis, ask-mode explanation, and opt-in research |
-| Private control plane support | Includes OpenClaw workspace assets for Telegram DM based operations |
+| Private control plane support | Includes OpenClaw workspace assets for Discord-first operations and DM approvals |
 
 ## How It Works
 
@@ -46,10 +48,10 @@ flowchart LR
     D --> E[("SQLite state")]
     E --> F["Deterministic scoring"]
     F --> G["Digest shortlist"]
-    G --> H["Telegram digest renderer"]
+    G --> H["Plain-text digest renderer"]
     G --> I["Optional LLM enrichment"]
     I --> H
-    H --> J["Telegram or shell output"]
+    H --> J["Discord, Telegram, or shell output"]
     E --> K["Stored follow-up context"]
     K --> L["Deterministic follow-up"]
     K --> M["Ask mode"]
@@ -83,11 +85,11 @@ flowchart TB
         LLM["src/llm/ (optional)"]
     end
 
-    subgraph Control["Telegram / OpenClaw layer"]
+    subgraph Control["Discord / OpenClaw layer"]
         SK["skills/"]
         WS["workspace-template/"]
         OC["OpenClaw orchestration"]
-        TG["Telegram DM"]
+        DC["Discord server + DM"]
     end
 
     S1 --> SA
@@ -104,7 +106,7 @@ flowchart TB
     CM --> OC
     SK --> OC
     WS --> OC
-    OC --> TG
+    OC --> DC
 ```
 
 ## What Is Implemented Today
@@ -112,6 +114,7 @@ flowchart TB
 OpenSec already includes:
 
 - curated source ingestion
+- profile-aware digest generation for `tech` and `finance`
 - normalization, canonicalization, and deduplication
 - SQLite-backed local state
 - deterministic ranking and resend suppression
@@ -120,26 +123,37 @@ OpenSec already includes:
 - optional LLM item enrichment and theme synthesis
 - `ask` follow-ups over stored evidence
 - `research` follow-ups with bounded live search and cited links
-- OpenClaw workspace bootstrap assets for private Telegram use
+- OpenClaw workspace bootstrap assets for private Discord use
 
 Still planned or evolving:
 
 - LLM rerank calibration
-- richer Telegram inline actions
+- richer Discord thread delegation and standing orders
 - further VPS and automation hardening
 
 ## Supported Sources
 
 The default adapters currently cover:
 
-- GeekNews RSS
+`tech`
+
 - OpenAI News RSS
 - GitHub Trending
-  - overall
-  - python
-  - typescript
-  - javascript
-  - rust
+- GeekNews
+- Techmeme
+- Hacker News
+
+`finance`
+
+- Federal Reserve press
+- SEC press
+- Treasury press
+- BLS releases
+  - CPI
+  - Jobs
+  - PPI
+  - ECI
+- major-company SEC filings
 
 ## Follow-up Modes
 
@@ -177,8 +191,9 @@ pnpm install
 pnpm approve-builds
 cp .env.example .env
 pnpm test
-pnpm digest:am
-pnpm followup -- "expand 1"
+pnpm digest -- --profile tech --mode am
+pnpm digest -- --profile finance --mode am
+pnpm followup -- --profile tech "expand 1"
 ```
 
 If `pnpm approve-builds` prompts for native packages, approve `better-sqlite3` and `esbuild`.
@@ -187,23 +202,31 @@ Useful local commands:
 
 ```bash
 pnpm --dir ./news-bot fetch
-pnpm --dir ./news-bot digest:am
-pnpm --dir ./news-bot digest:pm
+pnpm --dir ./news-bot digest -- --profile tech --mode am
+pnpm --dir ./news-bot digest -- --profile tech --mode pm
+pnpm --dir ./news-bot digest -- --profile finance --mode am
+pnpm --dir ./news-bot digest -- --profile finance --mode pm
 pnpm --dir ./news-bot dry-run:am
 pnpm --dir ./news-bot dry-run:pm
-pnpm --dir ./news-bot followup -- "openai only"
-pnpm --dir ./news-bot followup -- "repo radar"
-pnpm --dir ./news-bot followup -- "today themes"
-pnpm --dir ./news-bot followup -- "show sources for 2"
-pnpm --dir ./news-bot followup -- "ask summarize today's OpenAI items"
-pnpm --dir ./news-bot followup -- "research look deeper into item 2"
+pnpm --dir ./news-bot followup -- --profile tech "openai only"
+pnpm --dir ./news-bot followup -- --profile tech "repo radar"
+pnpm --dir ./news-bot followup -- --profile tech "today themes"
+pnpm --dir ./news-bot followup -- --profile tech "show sources for 2"
+pnpm --dir ./news-bot followup -- --profile tech "ask summarize today's OpenAI items"
+pnpm --dir ./news-bot followup -- --profile finance "ask summarize today's macro items"
+pnpm --dir ./news-bot followup -- --profile tech "research look deeper into item 2"
 ```
 
 ### 2. Configure environment variables
 
 For local CLI use, the defaults are enough to get started.
 
-For real Telegram and OpenClaw delivery, fill in:
+For real Discord and OpenClaw delivery, fill in:
+
+- your Discord bot token in the OpenClaw config
+- your Discord server and channel IDs in the OpenClaw config
+
+Telegram variables are only needed if you keep Telegram as a fallback delivery surface:
 
 - `NEWS_BOT_TELEGRAM_USER_ID`
 - `TELEGRAM_BOT_TOKEN`
@@ -211,13 +234,14 @@ For real Telegram and OpenClaw delivery, fill in:
 Optional LLM variables:
 
 - `OPENAI_API_KEY`
+- `NEWS_BOT_DEFAULT_PROFILE`
 - `NEWS_BOT_LLM_ENABLED`
 - `NEWS_BOT_LLM_THEMES_ENABLED`
 - `NEWS_BOT_LLM_MODEL_SUMMARY`
 - `NEWS_BOT_LLM_MODEL_THEMES`
 - `NEWS_BOT_LLM_MODEL_RESEARCH`
 
-### 3. Turn it into a private Telegram control plane
+### 3. Turn it into a private Discord control plane
 
 This repository also ships the assets needed to run OpenSec inside a private OpenClaw workspace.
 
@@ -240,9 +264,10 @@ bash ./scripts/setup-personal-workspace.sh
 Then:
 
 1. copy the example OpenClaw config
-2. fill in your Telegram bot token and owner ID
+2. fill in your Discord bot token, server ID, channel IDs, and owner ID
 3. start the OpenClaw gateway
 4. point OpenClaw at the personal workspace that includes these skills
+5. install the Discord cron jobs for `#tech-brief` and `#finance-brief`
 
 ## Design Principles
 
@@ -263,8 +288,9 @@ Recommended reading order:
 2. [`news-bot/README.md`](./news-bot/README.md)
 3. [`docs/generated/db-schema.md`](./docs/generated/db-schema.md)
 4. [`docs/product-specs/llm-assisted-digest.md`](./docs/product-specs/llm-assisted-digest.md)
-5. [`docs/product-specs/telegram-news-followup-and-research.md`](./docs/product-specs/telegram-news-followup-and-research.md)
-6. [`docs/design-docs/openclaw-personal-control-plane.md`](./docs/design-docs/openclaw-personal-control-plane.md)
+5. [`docs/product-specs/discord-personal-control-plane.md`](./docs/product-specs/discord-personal-control-plane.md)
+6. [`docs/product-specs/telegram-news-followup-and-research.md`](./docs/product-specs/telegram-news-followup-and-research.md)
+7. [`docs/design-docs/openclaw-personal-control-plane.md`](./docs/design-docs/openclaw-personal-control-plane.md)
 
 Current execution work lives under [`docs/exec-plans/active/`](./docs/exec-plans/active).
 
@@ -287,8 +313,8 @@ Recommended validation:
 
 ```bash
 pnpm --dir ./news-bot test
-pnpm --dir ./news-bot digest:am
-pnpm --dir ./news-bot digest:pm
+pnpm --dir ./news-bot digest -- --profile tech --mode am
+pnpm --dir ./news-bot digest -- --profile finance --mode am
 ```
 
 ## Who This Repo Is For
@@ -296,7 +322,7 @@ pnpm --dir ./news-bot digest:pm
 OpenSec is a strong fit if you want:
 
 - a private AI news digest for one owner
-- Telegram as the front door
+- Discord as the front door
 - deterministic retrieval with optional LLM explanation
 - preserved source evidence instead of opaque agent behavior
 - a repo that doubles as both product code and operations scaffold

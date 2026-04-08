@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { runFollowupCommand } from "./commands/followup.js";
 import { runDigestFlow, runFetchOnly } from "./commands/runDigest.js";
+import { resolveProfileKey } from "./profiles.js";
 
 async function main(): Promise<void> {
   const [command = "digest", ...args] = process.argv.slice(2);
@@ -8,6 +9,7 @@ async function main(): Promise<void> {
 
   if (command === "digest") {
     const { digest, db } = await runDigestFlow({
+      profileKey: resolveProfileKey(getStringOption(options, "profile")),
       mode: (getStringOption(options, "mode") as "am" | "pm" | "manual") ?? "manual",
       nowIso: getStringOption(options, "now"),
       dbPathOverride: getStringOption(options, "db"),
@@ -27,6 +29,7 @@ async function main(): Promise<void> {
     }
     console.log(
       await runFollowupCommand({
+        profileKey: resolveProfileKey(getStringOption(options, "profile")),
         command: commandText,
         nowIso: getStringOption(options, "now"),
         dbPathOverride: getStringOption(options, "db")
@@ -37,6 +40,9 @@ async function main(): Promise<void> {
 
   if (command === "fetch") {
     const { db } = await runFetchOnly({
+      profileKey: getStringOption(options, "profile")
+        ? resolveProfileKey(getStringOption(options, "profile"))
+        : undefined,
       nowIso: getStringOption(options, "now"),
       dbPathOverride: getStringOption(options, "db"),
       resetDb: getBooleanOption(options, "reset-db")

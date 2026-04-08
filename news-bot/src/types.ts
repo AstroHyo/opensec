@@ -4,7 +4,15 @@ export type SourceId =
   | "github_trending"
   | "techmeme"
   | "hacker_news"
-  | "bluesky_watch";
+  | "bluesky_watch"
+  | "fed_press"
+  | "sec_press"
+  | "treasury_press"
+  | "bls_cpi"
+  | "bls_jobs"
+  | "bls_ppi"
+  | "bls_eci"
+  | "major_company_filings";
 
 export type SourceLayer = "primary" | "precision" | "early_warning";
 
@@ -15,7 +23,12 @@ export type SourceType =
   | "vendor_official"
   | "techmeme"
   | "hacker_news"
-  | "social_signal";
+  | "social_signal"
+  | "macro_official"
+  | "regulatory_official"
+  | "company_filing";
+
+export type ProfileKey = "tech" | "finance";
 
 export type DigestMode = "am" | "pm" | "manual";
 
@@ -163,6 +176,7 @@ export interface NormalizedItemRecord {
 }
 
 export interface SourceRunSummary {
+  profileKey: ProfileKey;
   sourceId: SourceId;
   itemsFetched: number;
   itemsNormalized: number;
@@ -193,6 +207,7 @@ export interface DigestWindow {
 }
 
 export interface DigestEntry {
+  profileKey: ProfileKey;
   number: number;
   itemId: number;
   sectionKey: string;
@@ -228,6 +243,7 @@ export interface DigestSection {
 }
 
 export interface DigestBuildResult {
+  profileKey: ProfileKey;
   mode: DigestMode;
   header: string;
   window: DigestWindow;
@@ -240,6 +256,7 @@ export interface DigestBuildResult {
 
 export interface SavedDigestRecord {
   id: number;
+  profileKey: ProfileKey;
   mode: DigestMode;
   generatedAt: string;
   windowStart: string;
@@ -255,6 +272,7 @@ export type LlmRunType = "item_enrichment" | "theme_synthesis" | "followup_answe
 
 export interface LlmRunRecord {
   id: number;
+  profileKey: ProfileKey;
   runType: LlmRunType;
   modelName: string;
   promptVersion: string;
@@ -269,6 +287,7 @@ export interface LlmRunRecord {
 
 export interface ItemEnrichmentRecord {
   id: number;
+  profileKey: ProfileKey;
   itemId: number;
   llmRunId?: number | null;
   promptVersion: string;
@@ -284,6 +303,7 @@ export interface ItemEnrichmentRecord {
 
 export interface DigestThemeEnrichmentRecord {
   id: number;
+  profileKey: ProfileKey;
   digestCacheKey: string;
   digestMode: DigestMode;
   llmRunId?: number | null;

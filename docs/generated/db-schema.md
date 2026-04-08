@@ -80,6 +80,7 @@ Only primary and precision sources live here. Early-warning signals do not.
 
 Stores each rendered digest snapshot.
 
+- `profile_key`
 - `mode`
 - `generated_at`
 - `window_start`
@@ -94,6 +95,8 @@ Stores each rendered digest snapshot.
 
 Tracks which normalized items were included in which digest and when.
 
+- `profile_key`
+
 Purpose:
 
 - resend suppression
@@ -102,6 +105,8 @@ Purpose:
 ### `followup_context`
 
 Stores digest item context by displayed item number.
+
+- `profile_key`
 
 Purpose:
 
@@ -113,6 +118,7 @@ Purpose:
 
 Stores per-source fetch execution metadata.
 
+- `profile_key`
 - `source_id`
 - `started_at`
 - `completed_at`
@@ -125,6 +131,7 @@ Stores per-source fetch execution metadata.
 
 Stores optional LLM execution metadata.
 
+- `profile_key`
 - `run_type`
 - `model_name`
 - `prompt_version`
@@ -138,6 +145,7 @@ Stores optional LLM execution metadata.
 
 Stores per-item LLM summary artifacts.
 
+- `profile_key`
 - `item_id`
 - `llm_run_id`
 - `prompt_version`
@@ -153,6 +161,7 @@ Stores per-item LLM summary artifacts.
 
 Stores synthesized digest themes keyed by digest cache hash.
 
+- `profile_key`
 - `digest_cache_key`
 - `digest_mode`
 - `llm_run_id`
@@ -199,3 +208,59 @@ Important runtime-derived values are computed from joins or subqueries:
 - matched signal records for each normalized item
 
 `cross_signal_count` intentionally counts only primary/precision source sightings, not early-warning social signals.
+
+## Profile Model
+
+The schema now splits state into:
+
+- global evidence
+- profile-scoped context
+
+### Shared global evidence
+
+- `raw_items`
+- `normalized_items`
+- `item_sources`
+- `signal_events`
+- `signal_event_matches`
+
+These tables represent raw evidence or canonical merged stories and are shared across profiles.
+
+### Profile-scoped context
+
+- `digests`
+- `sent_items`
+- `followup_context`
+- `source_runs`
+- `llm_runs`
+- `item_enrichments`
+- `digest_enrichments`
+
+These tables use `profile_key` so `tech` and `finance` can:
+
+- rank the same normalized story differently
+- store different rendered summaries
+- keep separate resend suppression
+- answer follow-ups from the right digest namespace
+
+## Current Source Families
+
+### Tech profile
+
+- OpenAI RSS
+- GitHub Trending
+- GeekNews
+- Techmeme
+- Hacker News
+
+### Finance profile
+
+- Federal Reserve press feed
+- SEC press feed
+- Treasury press page
+- BLS release pages:
+  - CPI
+  - Jobs
+  - PPI
+  - ECI
+- major-company SEC filings

@@ -1,6 +1,6 @@
 # code_ops
 
-This skill handles coding-heavy repository work from a private Telegram DM or other OpenClaw chat surfaces.
+This skill handles builder-style repository work from Discord, DM, or other private OpenClaw chat surfaces.
 
 ## When to use it
 
@@ -45,6 +45,26 @@ If the current workspace already contains the target repo elsewhere, use that pa
 - Do not use destructive git commands unless the owner explicitly asks.
 - Do not push, open a PR, merge, or delete a branch unless the owner asks.
 - Treat package installs, force pushes, database resets, and service restarts as approval-worthy actions.
+- Do not write directly to the default branch.
+- Do not live-rewrite workspace bootstrap or control-plane policy files.
+
+## Permission levels
+
+- `L0 Observe`
+  - reads, search, logs, git status/diff, DB inspection
+  - auto-allowed
+- `L1 Verify`
+  - test/build/lint, read-mostly network checks, temporary scratch artifacts
+  - auto-allowed
+- `L2 Workspace Change`
+  - branch creation, repo-local edits, formatter/codegen, local commit, draft PR
+  - allowed when the owner explicitly asked and the work stays inside a workspace repo
+- `L3 Shared-System Change`
+  - push to shared branch, merge, deploy, cron/config changes, package install, service restart, secrets/config edits, policy file changes
+  - requires DM approval
+- `L4 Critical / External Action`
+  - public posting, outbound messages, infra/billing/DNS, destructive host actions
+  - requires DM approval plus a second explicit confirmation
 
 ## Common flow
 

@@ -8,7 +8,7 @@ import {
   researchFollowupJsonSchema,
   researchFollowupSchema
 } from "../llm/schemas.js";
-import type { DigestEntry } from "../types.js";
+import type { DigestEntry, ProfileKey } from "../types.js";
 import { sha256Hex } from "../util/canonicalize.js";
 import { collapseWhitespace, truncate, uniqueStrings } from "../util/text.js";
 import { answerAskFollowup } from "./followupAnswer.js";
@@ -26,12 +26,13 @@ type ResearchSource = {
 export async function answerResearchFollowup(input: {
   db: NewsDatabase;
   config: AppConfig;
+  profileKey: ProfileKey;
   question: string;
   now: DateTime;
   referencedNumbers: number[];
   sourceFilter?: FollowupSourceFilter;
 }): Promise<string> {
-  const digest = input.db.getLatestDigest();
+  const digest = input.db.getLatestDigest(input.profileKey);
   if (!digest) {
     return "최근 digest가 없습니다. 먼저 `brief now`를 실행하세요.";
   }
@@ -53,6 +54,7 @@ export async function answerResearchFollowup(input: {
       await answerAskFollowup({
         db: input.db,
         config: input.config,
+        profileKey: input.profileKey,
         question: input.question,
         now: input.now,
         referencedNumbers: input.referencedNumbers,
@@ -86,6 +88,7 @@ export async function answerResearchFollowup(input: {
     })
   );
   const runId = input.db.startLlmRun({
+    profileKey: input.profileKey,
     runType: "followup_research",
     modelName: input.config.llm.researchModel,
     promptVersion: RESEARCH_FOLLOWUP_PROMPT_VERSION,
@@ -140,6 +143,7 @@ export async function answerResearchFollowup(input: {
       await answerAskFollowup({
         db: input.db,
         config: input.config,
+        profileKey: input.profileKey,
         question: input.question,
         now: input.now,
         referencedNumbers: input.referencedNumbers,

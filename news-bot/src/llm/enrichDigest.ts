@@ -53,7 +53,7 @@ async function enrichItems(
 
   for (const item of items) {
     const sourceHash = buildItemSourceHash(item);
-    const record = db.getItemEnrichment(item.itemId, ITEM_ENRICHMENT_PROMPT_VERSION, sourceHash);
+    const record = db.getItemEnrichment(item.profileKey, item.itemId, ITEM_ENRICHMENT_PROMPT_VERSION, sourceHash);
     if (record) {
       applyItemEnrichment(item, record);
     } else {
@@ -76,6 +76,7 @@ async function enrichItems(
   const startedAt = now.toUTC().toISO() ?? new Date().toISOString();
   const startedMillis = Date.now();
   const runId = db.startLlmRun({
+    profileKey: items[0]?.profileKey ?? "tech",
     runType: "item_enrichment",
     modelName: config.llm.summaryModel,
     promptVersion: ITEM_ENRICHMENT_PROMPT_VERSION,
@@ -106,6 +107,7 @@ async function enrichItems(
       }
 
       const saved = db.saveItemEnrichment({
+        profileKey: item.profileKey,
         itemId: item.itemId,
         llmRunId: runId,
         promptVersion: ITEM_ENRICHMENT_PROMPT_VERSION,
@@ -149,7 +151,7 @@ async function enrichThemes(
   now: DateTime
 ): Promise<void> {
   const digestCacheKey = buildDigestThemeCacheKey(digest);
-  const cached = db.getDigestThemeEnrichment(digestCacheKey, THEME_SYNTHESIS_PROMPT_VERSION);
+  const cached = db.getDigestThemeEnrichment(digest.profileKey, digestCacheKey, THEME_SYNTHESIS_PROMPT_VERSION);
   if (cached) {
     digest.themes = cached.themes;
     applyThemeBullets(digest);
@@ -159,6 +161,7 @@ async function enrichThemes(
   const startedAt = now.toUTC().toISO() ?? new Date().toISOString();
   const startedMillis = Date.now();
   const runId = db.startLlmRun({
+    profileKey: digest.profileKey,
     runType: "theme_synthesis",
     modelName: config.llm.themesModel,
     promptVersion: THEME_SYNTHESIS_PROMPT_VERSION,
@@ -186,6 +189,7 @@ async function enrichThemes(
 
     if (themes.length > 0) {
       db.saveDigestThemeEnrichment({
+        profileKey: digest.profileKey,
         digestCacheKey,
         digestMode: digest.mode,
         llmRunId: runId,
@@ -220,6 +224,7 @@ export function buildItemSourceHash(item: DigestEntry): string {
   return sha256Hex(
     JSON.stringify({
       itemId: item.itemId,
+      profileKey: item.profileKey,
       title: item.title,
       summary: item.summary,
       whyImportant: item.whyImportant,
@@ -238,6 +243,7 @@ export function buildItemSourceHash(item: DigestEntry): string {
 export function buildDigestThemeCacheKey(digest: DigestBuildResult): string {
   return sha256Hex(
     JSON.stringify({
+      profileKey: digest.profileKey,
       mode: digest.mode,
       items: digest.items.map((item) => ({
         itemId: item.itemId,

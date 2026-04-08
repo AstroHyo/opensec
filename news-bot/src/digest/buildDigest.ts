@@ -1,6 +1,7 @@
 import { DateTime } from "luxon";
 import type { AppConfig } from "../config.js";
 import { NewsDatabase } from "../db.js";
+import { getProfileConfig, matchesProfile } from "../profiles.js";
 import { isRelevantRepo, scoreItem } from "../scoring.js";
 import type {
   DigestBuildResult,
@@ -8,6 +9,7 @@ import type {
   DigestMode,
   DigestSection,
   NormalizedItemRecord,
+  ProfileKey,
   ScoreBreakdown
 } from "../types.js";
 import { resolveDigestWindow } from "../util/timeWindow.js";
@@ -17,6 +19,7 @@ import { renderTelegramDigest } from "./renderTelegram.js";
 interface BuildDigestParams {
   db: NewsDatabase;
   config: AppConfig;
+  profileKey: ProfileKey;
   mode: DigestMode;
   now: DateTime;
 }
@@ -26,9 +29,10 @@ interface ScoredItem {
   score: ScoreBreakdown;
 }
 
-export function buildDigest({ db, config, mode, now }: BuildDigestParams): DigestBuildResult {
-  const lastAmDigest = db.getLatestDigest("am");
-  const lastPmDigest = db.getLatestDigest("pm");
+export function buildDigest({ db, config, profileKey, mode, now }: BuildDigestParams): DigestBuildResult {
+  const profile = getProfileConfig(profileKey);
+  const lastAmDigest = db.getLatestDigest(profileKey, "am");
+  const lastPmDigest = db.getLatestDigest(profileKey, "pm");
   const window = resolveDigestWindow({
     mode,
     timezone: config.timezone,
@@ -40,12 +44,13 @@ export function buildDigest({ db, config, mode, now }: BuildDigestParams): Diges
   const windowStart = DateTime.fromISO(window.startUtc, { zone: "utc" });
   const windowEnd = DateTime.fromISO(window.endUtc, { zone: "utc" });
   const lookbackStart = windowStart.minus({ hours: 72 }).toISO() ?? window.startUtc;
-  const candidates = db.listCandidateItems(lookbackStart);
+  const candidates = db.listCandidateItems(profileKey, lookbackStart).filter((item) => matchesProfile(item, profileKey));
 
   const scored = candidates
     .map((item) => ({
       item,
       score: scoreItem(item, {
+        profileKey,
         mode,
         now: now.toUTC(),
         windowStart,
@@ -54,14 +59,15 @@ export function buildDigest({ db, config, mode, now }: BuildDigestParams): Diges
       })
     }))
     .filter((entry) => isNotFuture(entry, windowEnd))
-    .filter((entry) => includeItem(entry, mode))
+    .filter((entry) => includeItem(entry, mode, profileKey))
     .sort(sortScoredItems);
 
-  const emptyHeader = mode === "am" ? "AM AI Brief" : mode === "pm" ? "PM AI Wrap" : "Manual AI Brief";
+  const emptyHeader = profile.briefTitles[mode];
 
   if (scored.length === 0) {
     const header = `[${emptyHeader} | ${window.dateLabel} ET]`;
     return {
+      profileKey,
       mode,
       header,
       window,
@@ -83,14 +89,26 @@ export function buildDigest({ db, config, mode, now }: BuildDigestParams): Diges
     };
   }
 
-  const sections = mode === "am" ? buildAmSections(scored) : mode === "pm" ? buildPmSections(scored) : buildManualSections(scored);
+  const sections =
+    profileKey === "finance"
+      ? mode === "am"
+        ? buildFinanceAmSections(scored)
+        : mode === "pm"
+          ? buildFinancePmSections(scored)
+          : buildManualSections(scored, profileKey)
+      : mode === "am"
+        ? buildAmSections(scored, profileKey)
+        : mode === "pm"
+          ? buildPmSections(scored, profileKey)
+          : buildManualSections(scored, profileKey);
   assignNumbers(sections);
   const items = sections.flatMap((section) => section.items);
-  const themes = buildThemes(items, mode);
-  applyThemeSections(sections, themes, mode);
+  const themes = buildThemes(items, mode, profileKey);
+  applyThemeSections(sections, themes, mode, profileKey);
 
   const header = `[${emptyHeader} | ${window.dateLabel} ET]`;
   const result: DigestBuildResult = {
+    profileKey,
     mode,
     header,
     window,
@@ -108,7 +126,15 @@ export function buildDigest({ db, config, mode, now }: BuildDigestParams): Diges
   return result;
 }
 
-function includeItem(entry: ScoredItem, mode: DigestMode): boolean {
+function includeItem(entry: ScoredItem, mode: DigestMode, profileKey: ProfileKey): boolean {
+  if (profileKey === "finance") {
+    return includeFinanceItem(entry, mode);
+  }
+
+  return includeTechItem(entry, mode);
+}
+
+function includeTechItem(entry: ScoredItem, mode: DigestMode): boolean {
   const total = entry.score.total;
   const isOfficialOpenAi = entry.item.sourceType === "openai_official";
   const isRepo = entry.item.itemKind === "repo";
@@ -128,6 +154,18 @@ function includeItem(entry: ScoredItem, mode: DigestMode): boolean {
   return total >= (mode === "am" ? 70 : 62);
 }
 
+function includeFinanceItem(entry: ScoredItem, mode: DigestMode): boolean {
+  if (entry.score.suppressed) {
+    return false;
+  }
+
+  if (entry.item.primarySourceId === "major_company_filings") {
+    return entry.score.total >= (mode === "am" ? 74 : 68);
+  }
+
+  return entry.score.total >= (mode === "am" ? 64 : 58);
+}
+
 function sortScoredItems(left: ScoredItem, right: ScoredItem): number {
   if (right.score.total !== left.score.total) {
     return right.score.total - left.score.total;
@@ -138,7 +176,7 @@ function sortScoredItems(left: ScoredItem, right: ScoredItem): number {
   return rightTime - leftTime;
 }
 
-function buildAmSections(scored: ScoredItem[]): DigestSection[] {
+function buildAmSections(scored: ScoredItem[], profileKey: ProfileKey): DigestSection[] {
   const mustSee = scored.filter((entry) => entry.item.itemKind !== "repo").slice(0, 4);
   const mustSeeIds = new Set(mustSee.map((entry) => entry.item.id));
   const openAiWatch = scored
@@ -153,17 +191,17 @@ function buildAmSections(scored: ScoredItem[]): DigestSection[] {
     {
       key: "must_see",
       title: "꼭 볼 것",
-      items: mustSee.map((entry) => toDigestEntry(entry, "must_see"))
+      items: mustSee.map((entry) => toDigestEntry(entry, "must_see", profileKey))
     },
     {
       key: "openai_watch",
       title: "OpenAI Watch",
-      items: openAiWatch.map((entry) => toDigestEntry(entry, "openai_watch"))
+      items: openAiWatch.map((entry) => toDigestEntry(entry, "openai_watch", profileKey))
     },
     {
       key: "repo_radar",
       title: "Repo Radar",
-      items: repoRadar.map((entry) => toDigestEntry(entry, "repo_radar"))
+      items: repoRadar.map((entry) => toDigestEntry(entry, "repo_radar", profileKey))
     },
     {
       key: "themes",
@@ -174,7 +212,7 @@ function buildAmSections(scored: ScoredItem[]): DigestSection[] {
   ];
 }
 
-function buildPmSections(scored: ScoredItem[]): DigestSection[] {
+function buildPmSections(scored: ScoredItem[], profileKey: ProfileKey): DigestSection[] {
   const topDevelopments = scored.filter((entry) => entry.item.itemKind !== "repo").slice(0, 6);
   const topIds = new Set(topDevelopments.map((entry) => entry.item.id));
   const openAiWatch = scored
@@ -199,22 +237,22 @@ function buildPmSections(scored: ScoredItem[]): DigestSection[] {
     {
       key: "top_developments",
       title: "Top developments",
-      items: topDevelopments.map((entry) => toDigestEntry(entry, "top_developments"))
+      items: topDevelopments.map((entry) => toDigestEntry(entry, "top_developments", profileKey))
     },
     {
       key: "openai_watch",
       title: "OpenAI Watch",
-      items: openAiWatch.map((entry) => toDigestEntry(entry, "openai_watch"))
+      items: openAiWatch.map((entry) => toDigestEntry(entry, "openai_watch", profileKey))
     },
     {
       key: "tooling_methods",
       title: "AI Tooling / Methods",
-      items: tooling.map((entry) => toDigestEntry(entry, "tooling_methods"))
+      items: tooling.map((entry) => toDigestEntry(entry, "tooling_methods", profileKey))
     },
     {
       key: "repo_radar",
       title: "Repo Radar",
-      items: repoRadar.map((entry) => toDigestEntry(entry, "repo_radar"))
+      items: repoRadar.map((entry) => toDigestEntry(entry, "repo_radar", profileKey))
     },
     {
       key: "what_this_means",
@@ -225,27 +263,103 @@ function buildPmSections(scored: ScoredItem[]): DigestSection[] {
   ];
 }
 
-function buildManualSections(scored: ScoredItem[]): DigestSection[] {
+function buildFinanceAmSections(scored: ScoredItem[]): DigestSection[] {
+  const macro = scored.filter((entry) => financeBucket(entry.item) !== "company" && financeBucket(entry.item) !== "regulation").slice(0, 4);
+  const macroIds = new Set(macro.map((entry) => entry.item.id));
+  const policy = scored
+    .filter((entry) => financeBucket(entry.item) === "regulation" && !macroIds.has(entry.item.id))
+    .slice(0, 3);
+  const used = new Set([...macroIds, ...policy.map((entry) => entry.item.id)]);
+  const companies = scored.filter((entry) => financeBucket(entry.item) === "company" && !used.has(entry.item.id)).slice(0, 3);
+
+  return [
+    {
+      key: "macro_check",
+      title: "매크로 체크",
+      items: macro.map((entry) => toDigestEntry(entry, "macro_check", "finance"))
+    },
+    {
+      key: "policy_watch",
+      title: "정책 / 규제",
+      items: policy.map((entry) => toDigestEntry(entry, "policy_watch", "finance"))
+    },
+    {
+      key: "major_companies",
+      title: "대형주 / 기업",
+      items: companies.map((entry) => toDigestEntry(entry, "major_companies", "finance"))
+    },
+    {
+      key: "themes",
+      title: "오늘 보이는 흐름",
+      items: [],
+      bullets: []
+    }
+  ];
+}
+
+function buildFinancePmSections(scored: ScoredItem[]): DigestSection[] {
+  const topDevelopments = scored.slice(0, 6);
+  const topIds = new Set(topDevelopments.map((entry) => entry.item.id));
+  const macro = scored
+    .filter((entry) => !topIds.has(entry.item.id) && financeBucket(entry.item) !== "company" && financeBucket(entry.item) !== "regulation")
+    .slice(0, 4);
+  const used = new Set([...topIds, ...macro.map((entry) => entry.item.id)]);
+  const policy = scored.filter((entry) => !used.has(entry.item.id) && financeBucket(entry.item) === "regulation").slice(0, 3);
+  const usedNext = new Set([...used, ...policy.map((entry) => entry.item.id)]);
+  const companies = scored.filter((entry) => !usedNext.has(entry.item.id) && financeBucket(entry.item) === "company").slice(0, 4);
+
+  return [
+    {
+      key: "top_developments",
+      title: "Top developments",
+      items: topDevelopments.map((entry) => toDigestEntry(entry, "top_developments", "finance"))
+    },
+    {
+      key: "macro_rates",
+      title: "Macro / Rates",
+      items: macro.map((entry) => toDigestEntry(entry, "macro_rates", "finance"))
+    },
+    {
+      key: "policy_regulation",
+      title: "Policy / Regulation",
+      items: policy.map((entry) => toDigestEntry(entry, "policy_regulation", "finance"))
+    },
+    {
+      key: "major_companies",
+      title: "Major Companies",
+      items: companies.map((entry) => toDigestEntry(entry, "major_companies", "finance"))
+    },
+    {
+      key: "what_this_means",
+      title: "What this means",
+      items: [],
+      bullets: []
+    }
+  ];
+}
+
+function buildManualSections(scored: ScoredItem[], profileKey: ProfileKey): DigestSection[] {
   const highlights = scored.slice(0, 8);
   return [
     {
       key: "highlights",
       title: "Highlights",
-      items: highlights.map((entry) => toDigestEntry(entry, "highlights"))
+      items: highlights.map((entry) => toDigestEntry(entry, "highlights", profileKey))
     }
   ];
 }
 
-function toDigestEntry(entry: ScoredItem, sectionKey: string): DigestEntry {
+function toDigestEntry(entry: ScoredItem, sectionKey: string, profileKey: ProfileKey): DigestEntry {
   const sourceLinks = dedupeSourceLinks(entry.item);
   const title = entry.item.repoName && entry.item.repoOwner ? `${entry.item.repoOwner}/${entry.item.repoName}` : entry.item.title;
   return {
+    profileKey,
     number: 0,
     itemId: entry.item.id,
     sectionKey,
     title,
-    summary: buildSummary(entry.item, entry.score),
-    whyImportant: buildWhyImportant(entry.item, entry.score),
+    summary: buildSummary(entry.item, entry.score, profileKey),
+    whyImportant: buildWhyImportant(entry.item, entry.score, profileKey),
     contentSnippet: truncate(entry.item.contentText ?? entry.item.description ?? entry.item.title, 220),
     primaryUrl: sourceLinks[0]?.url ?? entry.item.originalUrl ?? entry.item.sourceUrl,
     sourceLabel: entry.item.primarySourceLabel,
@@ -319,7 +433,11 @@ function dedupeSignalLinks(item: NormalizedItemRecord): Array<{ label: string; u
   return links;
 }
 
-function buildSummary(item: NormalizedItemRecord, score: ScoreBreakdown): string {
+function buildSummary(item: NormalizedItemRecord, score: ScoreBreakdown, profileKey: ProfileKey): string {
+  if (profileKey === "finance") {
+    return buildFinanceSummary(item);
+  }
+
   const topicPhrase = buildTopicPhrase(score.matchedKeywords);
 
   if (item.sourceType === "openai_official") {
@@ -364,7 +482,11 @@ function buildSummary(item: NormalizedItemRecord, score: ScoreBreakdown): string
   return truncate(`${topicPhrase ?? "실무 영향이 있는 신호"}를 중심으로 본 항목입니다.`, 120);
 }
 
-function buildWhyImportant(item: NormalizedItemRecord, score: ScoreBreakdown): string {
+function buildWhyImportant(item: NormalizedItemRecord, score: ScoreBreakdown, profileKey: ProfileKey): string {
+  if (profileKey === "finance") {
+    return buildFinanceWhyImportant(item);
+  }
+
   if (item.sourceType === "openai_official") {
     return truncate("공식 소스라 노이즈가 적고, OpenAI 제품/API/안전성 방향을 직접 보여주는 신호입니다.", 110);
   }
@@ -449,7 +571,11 @@ function isNotFuture(entry: ScoredItem, windowEnd: DateTime): boolean {
   return published <= windowEnd;
 }
 
-function buildThemes(items: DigestEntry[], mode: DigestMode): string[] {
+function buildThemes(items: DigestEntry[], mode: DigestMode, profileKey: ProfileKey): string[] {
+  if (profileKey === "finance") {
+    return buildFinanceThemes(items, mode);
+  }
+
   const lowerKeywords = items.flatMap((item) => item.keywords.map((keyword) => keyword.toLowerCase()));
   const bullets: string[] = [];
 
@@ -480,11 +606,83 @@ function buildThemes(items: DigestEntry[], mode: DigestMode): string[] {
   return bullets.slice(0, mode === "am" ? 2 : 4);
 }
 
-function applyThemeSections(sections: DigestSection[], themes: string[], mode: DigestMode): void {
+function applyThemeSections(sections: DigestSection[], themes: string[], mode: DigestMode, profileKey: ProfileKey): void {
   const themeSectionKey = mode === "pm" ? "what_this_means" : "themes";
   const section = sections.find((candidate) => candidate.key === themeSectionKey);
   if (!section) {
     return;
   }
   section.bullets = themes;
+}
+
+function buildFinanceSummary(item: NormalizedItemRecord): string {
+  const bucket = financeBucket(item);
+
+  if (item.primarySourceId === "major_company_filings") {
+    const company = String(item.metadata.companyName ?? item.title);
+    return truncate(`${company}의 공식 공시입니다. 가이던스, 리스크, 자본 배분, AI 투자 신호를 빠르게 확인할 가치가 있습니다.`, 120);
+  }
+
+  if (bucket === "inflation") {
+    return truncate("인플레이션 경로를 직접 보여주는 공식 지표입니다. 금리 기대와 기업 마진 해석에 바로 연결됩니다.", 120);
+  }
+
+  if (bucket === "labor") {
+    return truncate("고용과 노동시장 강도를 보여주는 공식 지표입니다. 경기 체력과 금리 해석의 핵심 입력입니다.", 120);
+  }
+
+  if (bucket === "regulation") {
+    return truncate("정책·규제 방향을 보여주는 공식 발표입니다. 시장 구조와 기업 disclosure 부담에 영향을 줄 수 있습니다.", 120);
+  }
+
+  return truncate("거시/정책 방향을 읽는 데 직접 쓰이는 공식 항목입니다. 시장 기대 변화와 같이 봐야 합니다.", 120);
+}
+
+function buildFinanceWhyImportant(item: NormalizedItemRecord): string {
+  const bucket = financeBucket(item);
+
+  if (bucket === "company") {
+    return truncate("공식 공시라 해석 노이즈가 적고, 실적·가이던스·리스크 변화가 valuation 기대를 바로 움직일 수 있습니다.", 110);
+  }
+
+  if (bucket === "inflation") {
+    return truncate("인플레이션 경로는 금리와 valuation의 공통 분모라서, 하루 흐름보다 더 긴 기간 해석에 중요합니다.", 110);
+  }
+
+  if (bucket === "labor") {
+    return truncate("고용 지표는 경기 강도와 Fed 경로를 같이 읽게 해줘서, 정책 기대를 재가격할 때 중요합니다.", 110);
+  }
+
+  if (bucket === "regulation") {
+    return truncate("규제·집행 변화는 시장 구조, 공시 의무, 대형주 리스크 프리미엄에 직접 영향을 줄 수 있습니다.", 110);
+  }
+
+  return truncate("시장과 정책 기대가 만나는 공식 신호라서, headline보다 맥락을 같이 읽을 가치가 큽니다.", 110);
+}
+
+function buildFinanceThemes(items: DigestEntry[], mode: DigestMode): string[] {
+  const buckets = items.map((item) => String(item.metadata.financeBucket ?? ""));
+  const bullets: string[] = [];
+
+  if (buckets.some((bucket) => bucket === "inflation" || bucket === "labor")) {
+    bullets.push("오늘 금융 브리프는 인플레이션·고용처럼 금리 기대를 직접 흔드는 지표 비중이 높습니다.");
+  }
+
+  if (buckets.some((bucket) => bucket === "regulation")) {
+    bullets.push("정책·규제 신호가 붙은 날은 headline보다 집행 방향과 disclosure 부담을 같이 읽는 게 중요합니다.");
+  }
+
+  if (buckets.some((bucket) => bucket === "company")) {
+    bullets.push("대형주 공시는 실적 숫자보다 가이던스, capex, risk factor 변화에 더 주목할 가치가 있습니다.");
+  }
+
+  if (mode === "pm" && items.some((item) => item.primaryUrl.includes("sec.gov/Archives/edgar/data"))) {
+    bullets.push("PM wrap에서는 macro headline과 company filing을 붙여 봐야 하루 해석이 덜 흔들립니다.");
+  }
+
+  return bullets.slice(0, mode === "am" ? 2 : 4);
+}
+
+function financeBucket(item: NormalizedItemRecord): string {
+  return String(item.metadata.financeBucket ?? "");
 }

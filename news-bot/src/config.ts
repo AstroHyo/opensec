@@ -1,12 +1,14 @@
 import path from "node:path";
 import { z } from "zod";
+import { resolveProfileKey } from "./profiles.js";
 import { BLUESKY_WATCHLIST } from "./sources/blueskyWatchlist.js";
-import type { BlueskyWatchActor } from "./types.js";
+import type { BlueskyWatchActor, ProfileKey } from "./types.js";
 
 const envSchema = z.object({
   NEWS_BOT_TIMEZONE: z.string().default("America/New_York"),
   NEWS_BOT_LANGUAGE: z.string().default("ko"),
   NEWS_BOT_DB_PATH: z.string().default("./data/news-bot.sqlite"),
+  NEWS_BOT_DEFAULT_PROFILE: z.string().default("tech"),
   NEWS_BOT_HTTP_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
   NEWS_BOT_TELEGRAM_USER_ID: z.string().optional(),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
@@ -44,6 +46,7 @@ export interface AppConfig {
   timezone: string;
   language: string;
   dbPath: string;
+  defaultProfile: ProfileKey;
   httpTimeoutMs: number;
   telegramUserId?: string;
   telegramBotToken?: string;
@@ -70,12 +73,17 @@ export interface AppConfig {
   sourceUrls: {
     geeknewsRss: string;
     openaiNewsRss: string;
+    fedPressRss: string;
+    secPressRss: string;
+    treasuryPressPage: string;
+    blsReleasePages: Array<{ key: "bls_cpi" | "bls_jobs" | "bls_ppi" | "bls_eci"; label: string; url: string }>;
     openaiSections: Array<{ label: string; url: string }>;
     githubTrending: Array<{ label: string; url: string }>;
     techmemeHome: string;
     hackerNewsApiBase: string;
     blueskyApiBase: string;
   };
+  financeCompanies: Array<{ name: string; ticker: string; cik: string }>;
 }
 
 export function loadConfig(cwd = process.cwd()): AppConfig {
@@ -87,6 +95,7 @@ export function loadConfig(cwd = process.cwd()): AppConfig {
     timezone: env.NEWS_BOT_TIMEZONE,
     language: env.NEWS_BOT_LANGUAGE,
     dbPath: path.resolve(projectRoot, env.NEWS_BOT_DB_PATH),
+    defaultProfile: resolveProfileKey(env.NEWS_BOT_DEFAULT_PROFILE),
     httpTimeoutMs: env.NEWS_BOT_HTTP_TIMEOUT_MS,
     telegramUserId: env.NEWS_BOT_TELEGRAM_USER_ID,
     telegramBotToken: env.TELEGRAM_BOT_TOKEN,
@@ -113,6 +122,15 @@ export function loadConfig(cwd = process.cwd()): AppConfig {
     sourceUrls: {
       geeknewsRss: "https://news.hada.io/rss/news",
       openaiNewsRss: "https://openai.com/news/rss.xml",
+      fedPressRss: "https://www.federalreserve.gov/feeds/press_all.xml",
+      secPressRss: "https://www.sec.gov/news/pressreleases.rss",
+      treasuryPressPage: "https://home.treasury.gov/news/press-releases",
+      blsReleasePages: [
+        { key: "bls_cpi", label: "BLS / CPI", url: "https://www.bls.gov/news.release/cpi.toc.htm" },
+        { key: "bls_jobs", label: "BLS / Jobs", url: "https://www.bls.gov/news.release/empsit.toc.htm" },
+        { key: "bls_ppi", label: "BLS / PPI", url: "https://www.bls.gov/news.release/ppi.toc.htm" },
+        { key: "bls_eci", label: "BLS / ECI", url: "https://www.bls.gov/news.release/eci.toc.htm" }
+      ],
       openaiSections: [
         { label: "OpenAI / Newsroom", url: "https://openai.com/news/" },
         { label: "OpenAI / Product Releases", url: "https://openai.com/news/product-releases/" },
@@ -129,6 +147,15 @@ export function loadConfig(cwd = process.cwd()): AppConfig {
       techmemeHome: "https://www.techmeme.com",
       hackerNewsApiBase: "https://hacker-news.firebaseio.com/v0",
       blueskyApiBase: "https://public.api.bsky.app/xrpc"
-    }
+    },
+    financeCompanies: [
+      { name: "Apple", ticker: "AAPL", cik: "0000320193" },
+      { name: "Microsoft", ticker: "MSFT", cik: "0000789019" },
+      { name: "Alphabet", ticker: "GOOGL", cik: "0001652044" },
+      { name: "Amazon", ticker: "AMZN", cik: "0001018724" },
+      { name: "Meta", ticker: "META", cik: "0001326801" },
+      { name: "NVIDIA", ticker: "NVDA", cik: "0001045810" },
+      { name: "Tesla", ticker: "TSLA", cik: "0001318605" }
+    ]
   };
 }

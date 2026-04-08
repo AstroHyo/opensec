@@ -1,7 +1,8 @@
 import { DateTime } from "luxon";
-import type { DigestMode, NormalizedItemRecord, ScoreBreakdown } from "./types.js";
+import type { DigestMode, NormalizedItemRecord, ProfileKey, ScoreBreakdown } from "./types.js";
 
 interface ScoreContext {
+  profileKey: ProfileKey;
   mode: DigestMode;
   now: DateTime;
   windowStart: DateTime;
@@ -16,7 +17,10 @@ const SOURCE_AUTHORITY: Record<NormalizedItemRecord["sourceType"], number> = {
   vendor_official: 38,
   techmeme: 56,
   hacker_news: 52,
-  social_signal: 18
+  social_signal: 18,
+  macro_official: 74,
+  regulatory_official: 70,
+  company_filing: 76
 };
 
 const OPENAI_CATEGORY_BONUS: Record<string, number> = {
@@ -111,7 +115,28 @@ const REPO_LANGUAGE_BONUS: Record<string, number> = {
   Rust: 4
 };
 
+const FINANCE_KEYWORD_RULES = [
+  { pattern: /\bfederal reserve\b|\bfed\b|\bfomc\b/i, label: "Fed", weight: 16 },
+  { pattern: /\brates?\b|\bpolicy rate\b|\brate cut\b|\brate hike\b/i, label: "rates", weight: 12 },
+  { pattern: /\bcpi\b|\binflation\b|\bconsumer price index\b/i, label: "inflation", weight: 18 },
+  { pattern: /\bppi\b|\bproducer price\b/i, label: "ppi", weight: 12 },
+  { pattern: /\bpayroll\b|\bemployment situation\b|\bunemployment\b|\blabor market\b/i, label: "jobs", weight: 18 },
+  { pattern: /\beci\b|\bemployment cost index\b|\bwages?\b/i, label: "wages", weight: 12 },
+  { pattern: /\btreasury\b|\bissuance\b|\bdebt\b|\byield\b/i, label: "treasury", weight: 10 },
+  { pattern: /\bsec\b|\benforcement\b|\bdisclosure\b|\bmarket structure\b/i, label: "regulation", weight: 12 },
+  { pattern: /\b10-k\b|\b10-q\b|\b8-k\b|\bfiling\b/i, label: "filing", weight: 14 },
+  { pattern: /\bguidance\b|\bbuyback\b|\bcapex\b|\bearnings\b/i, label: "company signal", weight: 10 }
+];
+
 export function scoreItem(item: NormalizedItemRecord, context: ScoreContext): ScoreBreakdown {
+  if (context.profileKey === "finance") {
+    return scoreFinanceItem(item, context);
+  }
+
+  return scoreTechItem(item, context);
+}
+
+function scoreTechItem(item: NormalizedItemRecord, context: ScoreContext): ScoreBreakdown {
   const text = `${item.title} ${item.description ?? ""} ${item.contentText ?? ""} ${item.repoName ?? ""}`;
   const reasons: string[] = [];
   const matchedKeywords = new Set<string>();
@@ -217,6 +242,122 @@ export function scoreItem(item: NormalizedItemRecord, context: ScoreContext): Sc
         resendPenalty = 12;
         reasons.push("OpenAI 공식 항목 업데이트 감지");
       }
+    }
+  }
+
+  const total =
+    authorityScore +
+    freshnessScore +
+    keywordScore +
+    methodologyScore +
+    tractionScore +
+    precisionSignalScore +
+    earlyWarningScore +
+    crossSignalScore -
+    resendPenalty;
+
+  return {
+    total,
+    suppressed,
+    authorityScore,
+    freshnessScore,
+    keywordScore,
+    methodologyScore,
+    tractionScore,
+    crossSignalScore,
+    precisionSignalScore,
+    earlyWarningScore,
+    resendPenalty,
+    matchedKeywords: [...matchedKeywords],
+    reasons
+  };
+}
+
+function scoreFinanceItem(item: NormalizedItemRecord, context: ScoreContext): ScoreBreakdown {
+  const text = `${item.title} ${item.description ?? ""} ${item.contentText ?? ""}`;
+  const reasons: string[] = [];
+  const matchedKeywords = new Set<string>();
+
+  let suppressed = false;
+  let authorityScore = SOURCE_AUTHORITY[item.sourceType] ?? 40;
+
+  const financeBucket = String(item.metadata.financeBucket ?? "");
+  if (item.primarySourceId === "fed_press") {
+    authorityScore += 16;
+    reasons.push("Fed 공식 신호");
+  } else if (item.primarySourceId === "sec_press") {
+    authorityScore += 12;
+    reasons.push("SEC 공식 신호");
+  } else if (item.primarySourceId === "treasury_press") {
+    authorityScore += 12;
+    reasons.push("Treasury 공식 신호");
+  } else if (
+    item.primarySourceId === "bls_cpi" ||
+    item.primarySourceId === "bls_jobs" ||
+    item.primarySourceId === "bls_ppi" ||
+    item.primarySourceId === "bls_eci"
+  ) {
+    authorityScore += 15;
+    reasons.push("BLS 공식 지표");
+  } else if (item.primarySourceId === "major_company_filings") {
+    authorityScore += 10;
+    reasons.push("공식 기업 공시");
+  }
+
+  const published = DateTime.fromISO(item.publishedAt ?? item.lastSeenAt, { zone: "utc" });
+  const hoursOld = Math.max(0, context.now.diff(published, "hours").hours);
+  let freshnessScore = 0;
+  if (published >= context.windowStart && published <= context.windowEnd) {
+    freshnessScore = 34;
+    reasons.push("현재 digest 윈도우 내 최신 항목");
+  } else if (hoursOld <= 12) {
+    freshnessScore = 24;
+  } else if (hoursOld <= 36) {
+    freshnessScore = 16;
+  } else if (hoursOld <= 72) {
+    freshnessScore = 8;
+  } else if (hoursOld <= 120) {
+    freshnessScore = 3;
+  }
+
+  let keywordScore = 0;
+  for (const rule of FINANCE_KEYWORD_RULES) {
+    if (rule.pattern.test(text)) {
+      matchedKeywords.add(rule.label);
+      keywordScore += rule.weight;
+    }
+  }
+  keywordScore = Math.min(keywordScore, 42);
+  if (matchedKeywords.size > 0) {
+    reasons.push(`금융 키워드 일치: ${[...matchedKeywords].join(", ")}`);
+  }
+
+  let methodologyScore = 0;
+  if (financeBucket === "regulation" || financeBucket === "policy") {
+    methodologyScore = 8;
+    reasons.push("정책/규제 변화");
+  } else if (financeBucket === "company") {
+    methodologyScore = 6;
+    reasons.push("대형주 공시");
+  }
+
+  let tractionScore = 0;
+  if (item.itemKind === "repo") {
+    suppressed = true;
+    reasons.push("finance profile에서는 repo 항목 제외");
+  }
+
+  const precisionSignalScore = 0;
+  const earlyWarningScore = computeEarlyWarningScore(item, reasons);
+  const crossSignalScore = 0;
+
+  let resendPenalty = 0;
+  if (item.lastSentAt) {
+    const hoursSinceSent = context.now.diff(DateTime.fromISO(item.lastSentAt, { zone: "utc" }), "hours").hours;
+    if (hoursSinceSent < context.resendHours) {
+      resendPenalty = 120;
+      suppressed = true;
+      reasons.push(`최근 ${context.resendHours}시간 내 이미 전송됨`);
     }
   }
 

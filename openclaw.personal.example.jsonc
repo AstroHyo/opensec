@@ -10,7 +10,25 @@
         fallbacks: ["openai/gpt-5.2"],
       },
     },
+    list: [
+      {
+        id: "coordinator",
+        name: "Coordinator",
+        default: true,
+      },
+    ],
   },
+
+  bindings: [
+    // Keep one visible front door. Hidden specialists should be spawned or delegated internally.
+    {
+      match: {
+        channel: "discord",
+        peer: { kind: "guild", id: "YOUR_SERVER_ID" },
+      },
+      agentId: "coordinator",
+    },
+  ],
 
   commands: {
     native: "auto",
@@ -19,21 +37,31 @@
   },
 
   channels: {
-    telegram: {
+    discord: {
       enabled: true,
-      botToken: "123456789:replace-me",
-      dmPolicy: "allowlist",
-      allowFrom: ["123456789"],
-      defaultTo: "123456789",
-      linkPreview: false,
-      streaming: "partial",
-      commands: {
-        native: "auto",
-        nativeSkills: false,
+      token: "replace-me",
+      groupPolicy: "allowlist",
+      guilds: {
+        YOUR_SERVER_ID: {
+          requireMention: true,
+          channels: {
+            YOUR_ASSISTANT_CHANNEL_ID: { allow: true },
+            YOUR_TECH_BRIEF_CHANNEL_ID: { allow: true },
+            YOUR_FINANCE_BRIEF_CHANNEL_ID: { allow: true },
+            YOUR_RESEARCH_CHANNEL_ID: { allow: true },
+            YOUR_CODING_CHANNEL_ID: { allow: true },
+          },
+        },
+      },
+      threadBindings: {
+        enabled: true,
+        idleHours: 24,
+        maxAgeHours: 0,
+        spawnSubagentSessions: true,
       },
       execApprovals: {
-        enabled: true,
-        approvers: ["123456789"],
+        enabled: "auto",
+        approvers: ["YOUR_USER_ID"],
         target: "dm",
       },
     },
@@ -47,4 +75,6 @@
       keepLines: 2000,
     },
   },
+
+  // Telegram can remain as a fallback channel until Discord is fully stable.
 }

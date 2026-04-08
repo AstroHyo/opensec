@@ -24,6 +24,7 @@ copy_if_missing "$REPO_ROOT/workspace-template/SOUL.md" "$WORKSPACE_ROOT/SOUL.md
 copy_if_missing "$REPO_ROOT/workspace-template/TOOLS.md" "$WORKSPACE_ROOT/TOOLS.md"
 copy_if_missing "$REPO_ROOT/workspace-template/USER.md" "$WORKSPACE_ROOT/USER.md"
 copy_if_missing "$REPO_ROOT/workspace-template/MEMORY.md" "$WORKSPACE_ROOT/MEMORY.md"
+copy_if_missing "$REPO_ROOT/workspace-template/HEARTBEAT.md" "$WORKSPACE_ROOT/HEARTBEAT.md"
 
 sync_skill_dir() {
   local src="$1"
@@ -54,7 +55,7 @@ fi
 echo
 echo "Next steps:"
 echo "  1. Copy $REPO_ROOT/openclaw.personal.example.jsonc to ~/.openclaw/openclaw.json"
-echo "  2. Fill in Telegram IDs and tokens"
+echo "  2. Fill in Discord bot token, server ID, channel IDs, and owner user ID"
 echo "  3. Run: openclaw onboard --install-daemon"
 echo "  4. Run: openclaw gateway status"
 echo "  5. Run: cd $TARGET_REPO_DIR/news-bot && pnpm install && pnpm approve-builds"

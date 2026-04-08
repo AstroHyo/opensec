@@ -68,7 +68,7 @@ describe("sourcing layers", () => {
         db.upsertNormalizedItem(item);
       }
 
-      const digest = buildDigest({ db, config, mode: "am", now: NOW });
+      const digest = buildDigest({ db, config, profileKey: "tech", mode: "am", now: NOW });
       const entry = digest.items.find((item) => item.title.includes("Introducing Agent Runtime Patterns"));
 
       expect(entry).toBeTruthy();
@@ -107,7 +107,7 @@ describe("sourcing layers", () => {
         itemKind: "news"
       });
 
-      const digest = buildDigest({ db, config, mode: "am", now: NOW });
+      const digest = buildDigest({ db, config, profileKey: "tech", mode: "am", now: NOW });
       expect(digest.items.some((item) => item.title.includes("MCP orchestration stack"))).toBe(true);
     } finally {
       db.close();
@@ -135,7 +135,7 @@ describe("sourcing layers", () => {
       ]);
       db.matchRecentSignalEvents(NOW.minus({ hours: 48 }).toUTC().toISO() ?? FETCHED_AT);
 
-      const digest = buildDigest({ db, config, mode: "am", now: NOW });
+      const digest = buildDigest({ db, config, profileKey: "tech", mode: "am", now: NOW });
       expect(digest.items).toHaveLength(1);
       expect(digest.items[0].signalLinks).toEqual([
         {
@@ -170,7 +170,7 @@ describe("sourcing layers", () => {
       const unmatched = db.listUnmatchedSignalEvents(5);
       expect(unmatched).toHaveLength(1);
       expect(unmatched[0].linkedUrl).toBeNull();
-      expect(db.listCandidateItems(NOW.minus({ hours: 72 }).toUTC().toISO() ?? FETCHED_AT)).toHaveLength(0);
+      expect(db.listCandidateItems("tech", NOW.minus({ hours: 72 }).toUTC().toISO() ?? FETCHED_AT)).toHaveLength(0);
     } finally {
       db.close();
     }

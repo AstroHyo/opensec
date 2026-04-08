@@ -58,6 +58,7 @@ describe("scoring", () => {
         contentText: "Smaller, faster models optimized for coding and tool use."
       }),
       {
+        profileKey: "tech",
         mode: "am",
         now,
         windowStart: now.minus({ hours: 4 }),
@@ -79,6 +80,7 @@ describe("scoring", () => {
         contentText: "Looking for chair recommendations."
       }),
       {
+        profileKey: "tech",
         mode: "am",
         now,
         windowStart: now.minus({ hours: 4 }),
@@ -94,6 +96,7 @@ describe("scoring", () => {
   it("filters weak trending repos that are not actually AI/tooling relevant", () => {
     const now = DateTime.fromISO("2026-03-27T14:00:00Z");
     const relevant = scoreItem(makeItem({}), {
+      profileKey: "tech",
       mode: "pm",
       now,
       windowStart: now.minus({ hours: 8 }),
@@ -108,6 +111,7 @@ describe("scoring", () => {
         contentText: "Beautiful CSS wallpapers and nostalgic gradient themes for your browser homepage."
       }),
       {
+        profileKey: "tech",
         mode: "pm",
         now,
         windowStart: now.minus({ hours: 8 }),

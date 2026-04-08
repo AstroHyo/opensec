@@ -13,6 +13,7 @@ Current active plan:
 - [`./exec-plans/active/2026-04-02-aws-ec2-c7i-flex-large-rollout.md`](./exec-plans/active/2026-04-02-aws-ec2-c7i-flex-large-rollout.md)
 - [`./exec-plans/active/2026-04-03-telegram-news-followup-and-research.md`](./exec-plans/active/2026-04-03-telegram-news-followup-and-research.md)
 - [`./exec-plans/active/2026-04-05-sourcing-expansion-precision-and-early-warning.md`](./exec-plans/active/2026-04-05-sourcing-expansion-precision-and-early-warning.md)
+- [`./exec-plans/active/2026-04-08-discord-personal-control-plane-v1-1.md`](./exec-plans/active/2026-04-08-discord-personal-control-plane-v1-1.md)
 
 Rule of thumb:
 

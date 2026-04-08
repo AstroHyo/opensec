@@ -2,22 +2,41 @@
 
 ## System Summary
 
-OpenSec is a Telegram-first personal AI news briefing system with a deterministic local core.
+OpenSec is now a Discord-first personal control plane with a deterministic multi-profile news engine at its core.
 
-This repository also provides workspace scaffolding and skills so OpenClaw can handle private Telegram DM coding and repo tasks around the news system.
+This repository has two layers:
 
-Today, the product works without any LLM dependency:
+1. `news-bot/`
+   - deterministic retrieval
+   - normalization and dedupe
+   - SQLite-backed local state
+   - profile-aware scoring and digest assembly
+   - stored-context follow-up
+2. OpenClaw workspace assets
+   - Discord-first workspace bootstrap
+   - coordinator tone and operating rules
+   - skills for news, coding, repo work, and system work
+   - approval and escalation policy
 
-- curated source fetch
-- normalization and dedupe
-- SQLite-backed state
-- explicit rule-based ranking
-- digest assembly
-- Telegram-ready rendering
+OpenClaw is still an external orchestrator. This repo does not implement OpenClaw itself.
 
-OpenClaw is used as an external orchestration layer for cron execution, Telegram routing, and skill-based `exec`.
+## Core Boundaries
 
-## Current Component Layout
+The deterministic boundary remains unchanged:
+
+- daily digest generation must not depend on freeform live web search
+- LLMs are optional explanation, enrichment, or explicit research layers
+- original evidence must remain attached to every digest-visible item
+- non-LLM fallback must remain usable
+
+The control-plane boundary is now broader:
+
+- Discord is the primary front door
+- Telegram may remain as a fallback or legacy channel
+- one visible coordinator is preferred over many visible bots
+- specialist work should happen through delegation, threads, or hidden subagents
+
+## Component Layout
 
 ```text
 Sources
@@ -27,111 +46,157 @@ Sources
   -> dedupe + merge
   -> signal matching
   -> SQLite state
-  -> deterministic scoring
+  -> profile-aware deterministic scoring
   -> digest builder
-  -> Telegram renderer
+  -> plain-text renderer
   -> OpenClaw / shell delivery
 ```
 
-## Primary Components
+## Profiles
 
-### Source Adapters
+The news engine is now profile-driven.
+
+Initial profiles:
+
+- `tech`
+- `finance`
+
+### Shared global evidence namespace
+
+These stay global because they represent raw or canonical evidence:
+
+- `raw_items`
+- `normalized_items`
+- `item_sources`
+- `signal_events`
+- `signal_event_matches`
+
+### Profile-scoped persisted context namespace
+
+These are profile-aware because ranking, rendering, resend suppression, and follow-up context differ by audience:
+
+- `digests`
+- `followup_context`
+- `sent_items`
+- `source_runs`
+- `llm_runs`
+- `item_enrichments`
+- `digest_enrichments`
+
+Effectively, the same normalized story can appear in both `tech` and `finance` while keeping:
+
+- different ranking
+- different score reasons
+- different `why important`
+- different item numbers
+- different follow-up context
+
+## Source Model
+
+### Primary sources
 
 - OpenAI official RSS
-- GitHub Trending HTML parsing
-- GeekNews RSS + topic-page original-link extraction
-- Techmeme homepage cluster parsing
-- Hacker News Firebase API
-- Bluesky watchlist signal ingestion
+- GitHub Trending
+- Federal Reserve press
+- SEC press
+- Treasury press
+- BLS release pages
+- major-company SEC filings
 
-### Processing Layer
+### Precision sources
 
-- URL canonicalization
-- normalized title hashing
-- fuzzy title similarity fallback
-- metadata merge across sources
+- GeekNews
+- Techmeme
+- Hacker News
 
-### State Layer
+### Early-warning sources
 
-SQLite stores:
+- Bluesky watchlist signals
 
-- raw source fetches
-- normalized items
-- digest history
-- resend state
-- follow-up context
-- source run history
+Rules:
 
-### Decision Layer
+- precision sources may introduce or strengthen digest candidates
+- early-warning sources may only boost or annotate existing candidates
+- early-warning sources may never create standalone digest items
 
-The current ranking system combines:
+## Scoring Layer
+
+Scoring stays deterministic and profile-aware.
+
+Inputs include:
 
 - source authority
 - freshness
+- keyword and methodology matches
+- repo traction where relevant
 - precision-layer boosts
 - early-warning boosts
-- user-interest keyword matches
-- methodology signal
-- repo traction
-- cross-signal boosts
 - resend suppression
 
-### Output Layer
+Profile-specific logic:
 
-- AM digest
-- PM digest
-- stored-context follow-up commands
-- Telegram-safe rendering
+- `tech` favors OpenAI, tooling, repos, and developer workflow
+- `finance` favors macro, policy, regulation, and major-company signals
 
-## Why This Architecture Exists
+## Follow-up Modes
 
-This project is intentionally not a "model goes browsing" bot.
+The digest pipeline stays deterministic. Follow-up is layered on top:
 
-The deterministic core gives us:
+- deterministic commands over stored context
+- `ask` over stored context with optional LLM explanation
+- `research` as explicit opt-in live search starting from stored context
 
-- reproducibility
-- debuggability
-- safe fallbacks
-- explicit prioritization logic
-- durable context for follow-up commands
+`research` must not change how the daily digest is built.
 
-## Planned LLM Extension Points
+## Discord Control Plane
 
-LLM usage should be added in layers, in this order:
+OpenClaw is now expected to run with:
 
-1. item-level summary enrichment
-2. theme synthesis across selected items
-3. richer follow-up answers from stored evidence
-4. optional rerank calibration on a bounded candidate set
-5. explicit post-digest research mode with bounded live search when the user asks for it
+- one visible coordinator
+- hidden builder and researcher specialist behavior
+- private Discord guild
+- channel-based work lanes
+- DM-only approvals for risky actions
 
-These layers must remain downstream of deterministic fetch and candidate generation.
+Recommended lanes:
 
-## Planned Follow-up Modes
+- `#assistant`
+- `#tech-brief`
+- `#finance-brief`
+- `#research`
+- `#coding`
 
-The future Telegram follow-up UX should separate:
+Important pattern:
 
-- deterministic follow-up over stored digest context
-- bounded LLM explanation over stored digest context
-- explicit opt-in live research after the digest has already been generated
+- channel context is shared workspace context
+- private durable memory should not be auto-injected into guild channels
+- long-running work should prefer thread-bound sessions
 
-The daily digest itself should remain deterministic even if research mode is later added.
+## Workspace Bootstrap
 
-## Target Future Architecture
+Bootstrap files now have stricter separation:
 
-```text
-Sources
-  -> primary + precision fetch
-  -> normalize + dedupe + merge
-  -> early-warning signal fetch
-  -> signal-to-story match
-  -> deterministic score
-  -> shortlist candidates
-  -> LLM item enrichment
-  -> final digest assembly
-  -> LLM theme synthesis
-  -> render + persist
-```
+- `SOUL.md`: tone and personality
+- `AGENTS.md`: routing, escalation, delegation, and channel rules
+- `TOOLS.md`: action levels and safety rules
+- `USER.md`: stable owner preferences
+- `MEMORY.md`: curated durable memory only
+- `memory/YYYY-MM-DD.md`: raw notes
+- `HEARTBEAT.md`: heartbeat-only behavior
+
+## Heartbeat Policy
+
+Heartbeat is intentionally off by default.
+
+It should only be enabled after:
+
+- digest delivery is stable for both profiles
+- wrong-channel replies are zero
+- escalation misroutes are zero
+- DM approvals have been exercised successfully
+- routing and bootstrap rules have settled down
+
+When enabled, heartbeat must stay low-noise and non-mutating.
 
 ## Boundaries To Keep
 
@@ -140,11 +205,12 @@ Sources
 - Do not let follow-up answers ignore stored source links.
 - Do not let early-warning social signals create standalone digest items.
 - Do not let enrichment failure block digest delivery.
+- Do not let Discord convenience collapse safety rules around approvals, self-editing, or private memory.
 
 ## Main Documents
 
 - `AGENTS.md`
-- `docs/design-docs/core-beliefs.md`
 - `docs/design-docs/openclaw-personal-control-plane.md`
-- `docs/exec-plans/active/2026-04-02-llm-curation-upgrade.md`
+- `docs/exec-plans/active/2026-04-08-discord-personal-control-plane-v1-1.md`
+- `docs/product-specs/discord-personal-control-plane.md`
 - `docs/generated/db-schema.md`

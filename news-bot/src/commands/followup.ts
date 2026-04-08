@@ -1,13 +1,14 @@
 import { DateTime } from "luxon";
 import { loadConfig } from "../config.js";
 import { NewsDatabase } from "../db.js";
-import type { DigestEntry } from "../types.js";
+import type { DigestEntry, ProfileKey } from "../types.js";
 import { answerAskFollowup } from "./followupAnswer.js";
 import { classifyFollowupIntent } from "./followupIntent.js";
 import { answerResearchFollowup } from "./followupResearch.js";
 import { runDigestFlow } from "./runDigest.js";
 
 export async function runFollowupCommand(input: {
+  profileKey?: ProfileKey;
   command: string;
   nowIso?: string;
   dbPathOverride?: string;
@@ -15,6 +16,7 @@ export async function runFollowupCommand(input: {
   const rawCommand = collapseInput(input.command);
   const command = normalizeCommand(rawCommand);
   const config = loadConfig(process.cwd());
+  const profileKey = input.profileKey ?? config.defaultProfile;
   const db = new NewsDatabase(input.dbPathOverride ?? config.dbPath);
   const now = input.nowIso
     ? DateTime.fromISO(input.nowIso, { zone: config.timezone }).setZone(config.timezone)
@@ -22,22 +24,22 @@ export async function runFollowupCommand(input: {
 
   try {
     if (command === "brief now") {
-      return await renderFreshDigest(now.hour < 15 ? "am" : "pm", input);
+      return await renderFreshDigest(profileKey, now.hour < 15 ? "am" : "pm", input);
     }
     if (command === "am brief now") {
-      return await renderFreshDigest("am", input);
+      return await renderFreshDigest(profileKey, "am", input);
     }
     if (command === "pm brief now") {
-      return await renderFreshDigest("pm", input);
+      return await renderFreshDigest(profileKey, "pm", input);
     }
-    const deterministic = tryDeterministicCommand(command, db);
+    const deterministic = tryDeterministicCommand(command, profileKey, db);
     if (deterministic) {
       return deterministic;
     }
 
     const intent = classifyFollowupIntent(rawCommand);
     if (intent.kind === "deterministic_command") {
-      const routed = tryDeterministicCommand(intent.command, db);
+      const routed = tryDeterministicCommand(intent.command, profileKey, db);
       if (routed) {
         return routed;
       }
@@ -47,6 +49,7 @@ export async function runFollowupCommand(input: {
       return await answerAskFollowup({
         db,
         config,
+        profileKey,
         question: intent.question,
         now,
         referencedNumbers: intent.referencedNumbers,
@@ -59,6 +62,7 @@ export async function runFollowupCommand(input: {
       return await answerResearchFollowup({
         db,
         config,
+        profileKey,
         question: intent.question,
         now,
         referencedNumbers: intent.referencedNumbers,
@@ -93,15 +97,15 @@ function normalizeCommand(command: string): string {
   return command.trim().replace(/^\//, "").toLowerCase();
 }
 
-function tryDeterministicCommand(command: string, db: NewsDatabase): string | null {
+function tryDeterministicCommand(command: string, profileKey: ProfileKey, db: NewsDatabase): string | null {
   if (command === "openai only") {
-    return renderSubset("OpenAI only", ensureLatestDigestItems(db), (item) => Boolean(item.openaiCategory));
+    return renderSubset("OpenAI only", ensureLatestDigestItems(profileKey, db), (item) => Boolean(item.openaiCategory));
   }
   if (command === "repo radar") {
-    return renderSubset("Repo Radar", ensureLatestDigestItems(db), (item) => item.repoStarsToday != null);
+    return renderSubset("Repo Radar", ensureLatestDigestItems(profileKey, db), (item) => item.repoStarsToday != null);
   }
   if (command === "today themes") {
-    const digest = db.getLatestDigest();
+    const digest = db.getLatestDigest(profileKey);
     return digest?.themes.length
       ? `[Today themes]\n\n${digest.themes.map((theme) => `- ${theme}`).join("\n")}`
       : "최근 digest theme 정보가 없습니다. 먼저 `brief now`를 실행하세요.";
@@ -109,27 +113,27 @@ function tryDeterministicCommand(command: string, db: NewsDatabase): string | nu
 
   const expandMatch = command.match(/^expand\s+(\d+)$/);
   if (expandMatch) {
-    const item = db.getFollowupContext(Number.parseInt(expandMatch[1], 10));
+    const item = db.getFollowupContext(profileKey, Number.parseInt(expandMatch[1], 10));
     return item ? renderExpandedItem(item) : notFound(expandMatch[1]);
   }
 
   const sourceMatch = command.match(/^show sources for\s+(\d+)$/);
   if (sourceMatch) {
-    const item = db.getFollowupContext(Number.parseInt(sourceMatch[1], 10));
+    const item = db.getFollowupContext(profileKey, Number.parseInt(sourceMatch[1], 10));
     return item ? renderSources(item) : notFound(sourceMatch[1]);
   }
 
   const whyMatch = command.match(/^why important\s+(\d+)$/);
   if (whyMatch) {
-    const item = db.getFollowupContext(Number.parseInt(whyMatch[1], 10));
+    const item = db.getFollowupContext(profileKey, Number.parseInt(whyMatch[1], 10));
     return item ? renderWhyImportant(item) : notFound(whyMatch[1]);
   }
 
   return null;
 }
 
-function ensureLatestDigestItems(db: NewsDatabase): DigestEntry[] {
-  const latest = db.getLatestDigest();
+function ensureLatestDigestItems(profileKey: ProfileKey, db: NewsDatabase): DigestEntry[] {
+  const latest = db.getLatestDigest(profileKey);
   return latest?.items ?? [];
 }
 
@@ -201,10 +205,12 @@ function notFound(index: string): string {
 }
 
 async function renderFreshDigest(
+  profileKey: ProfileKey,
   mode: "am" | "pm",
   input: { nowIso?: string; dbPathOverride?: string }
 ): Promise<string> {
   const { digest, db } = await runDigestFlow({
+    profileKey,
     mode,
     nowIso: input.nowIso,
     dbPathOverride: input.dbPathOverride

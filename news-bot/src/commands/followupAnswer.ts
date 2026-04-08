@@ -8,7 +8,7 @@ import {
   askFollowupJsonSchema,
   askFollowupSchema
 } from "../llm/schemas.js";
-import type { DigestEntry, SavedDigestRecord } from "../types.js";
+import type { DigestEntry, ProfileKey, SavedDigestRecord } from "../types.js";
 import { sha256Hex } from "../util/canonicalize.js";
 import { collapseWhitespace, truncate, uniqueStrings } from "../util/text.js";
 import { selectRelevantItems, summarizeSources } from "./followupContext.js";
@@ -17,13 +17,14 @@ import type { FollowupSourceFilter } from "./followupIntent.js";
 export async function answerAskFollowup(input: {
   db: NewsDatabase;
   config: AppConfig;
+  profileKey: ProfileKey;
   question: string;
   now: DateTime;
   referencedNumbers: number[];
   sourceFilter?: FollowupSourceFilter;
   comparisonRequested?: boolean;
 }): Promise<string> {
-  const digest = input.db.getLatestDigest();
+  const digest = input.db.getLatestDigest(input.profileKey);
   if (!digest) {
     return "최근 digest가 없습니다. 먼저 `brief now`를 실행하세요.";
   }
@@ -45,6 +46,7 @@ export async function answerAskFollowup(input: {
     digest,
     db: input.db,
     config: input.config,
+    profileKey: input.profileKey,
     now: input.now
   });
 
@@ -71,6 +73,7 @@ async function maybeAnswerWithLlm(input: {
   digest: SavedDigestRecord;
   db: NewsDatabase;
   config: AppConfig;
+  profileKey: ProfileKey;
   now: DateTime;
 }): Promise<{ answer: string; bullets: string[]; usedNumbers: number[]; uncertaintyNotes: string[] } | null> {
   const apiKey = input.config.openAiApiKey;
@@ -93,6 +96,7 @@ async function maybeAnswerWithLlm(input: {
     })
   );
   const runId = input.db.startLlmRun({
+    profileKey: input.profileKey,
     runType: "followup_answer",
     modelName: input.config.llm.summaryModel,
     promptVersion: ASK_FOLLOWUP_PROMPT_VERSION,

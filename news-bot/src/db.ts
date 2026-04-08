@@ -18,6 +18,7 @@ import type {
   LlmRunType,
   NormalizedItemRecord,
   SavedDigestRecord,
+  ProfileKey,
   SourceItemInput,
   SourceLayer,
   SourceRunSummary,
@@ -93,6 +94,7 @@ CREATE TABLE IF NOT EXISTS item_sources (
 
 CREATE TABLE IF NOT EXISTS digests (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  profile_key TEXT NOT NULL DEFAULT 'tech',
   mode TEXT NOT NULL,
   generated_at TEXT NOT NULL,
   window_start TEXT NOT NULL,
@@ -105,6 +107,7 @@ CREATE TABLE IF NOT EXISTS digests (
 );
 
 CREATE TABLE IF NOT EXISTS sent_items (
+  profile_key TEXT NOT NULL DEFAULT 'tech',
   digest_id INTEGER NOT NULL REFERENCES digests(id) ON DELETE CASCADE,
   item_id INTEGER NOT NULL REFERENCES normalized_items(id) ON DELETE CASCADE,
   slot INTEGER NOT NULL,
@@ -115,6 +118,7 @@ CREATE TABLE IF NOT EXISTS sent_items (
 
 CREATE TABLE IF NOT EXISTS followup_context (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  profile_key TEXT NOT NULL DEFAULT 'tech',
   digest_id INTEGER NOT NULL REFERENCES digests(id) ON DELETE CASCADE,
   item_number INTEGER NOT NULL,
   item_id INTEGER NOT NULL REFERENCES normalized_items(id) ON DELETE CASCADE,
@@ -125,6 +129,7 @@ CREATE TABLE IF NOT EXISTS followup_context (
 
 CREATE TABLE IF NOT EXISTS source_runs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  profile_key TEXT NOT NULL DEFAULT 'tech',
   source_id TEXT NOT NULL,
   started_at TEXT NOT NULL,
   completed_at TEXT,
@@ -136,6 +141,7 @@ CREATE TABLE IF NOT EXISTS source_runs (
 
 CREATE TABLE IF NOT EXISTS llm_runs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  profile_key TEXT NOT NULL DEFAULT 'tech',
   run_type TEXT NOT NULL,
   model_name TEXT NOT NULL,
   prompt_version TEXT NOT NULL,
@@ -150,6 +156,7 @@ CREATE TABLE IF NOT EXISTS llm_runs (
 
 CREATE TABLE IF NOT EXISTS item_enrichments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  profile_key TEXT NOT NULL DEFAULT 'tech',
   item_id INTEGER NOT NULL REFERENCES normalized_items(id) ON DELETE CASCADE,
   llm_run_id INTEGER REFERENCES llm_runs(id) ON DELETE SET NULL,
   prompt_version TEXT NOT NULL,
@@ -166,6 +173,7 @@ CREATE TABLE IF NOT EXISTS item_enrichments (
 
 CREATE TABLE IF NOT EXISTS digest_enrichments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  profile_key TEXT NOT NULL DEFAULT 'tech',
   digest_cache_key TEXT NOT NULL,
   digest_mode TEXT NOT NULL,
   llm_run_id INTEGER REFERENCES llm_runs(id) ON DELETE SET NULL,
@@ -204,10 +212,13 @@ CREATE TABLE IF NOT EXISTS signal_event_matches (
 
 CREATE INDEX IF NOT EXISTS idx_normalized_items_title_hash ON normalized_items(title_hash);
 CREATE INDEX IF NOT EXISTS idx_normalized_items_last_seen ON normalized_items(last_seen_at);
-CREATE INDEX IF NOT EXISTS idx_sent_items_item_sent_at ON sent_items(item_id, sent_at DESC);
-CREATE INDEX IF NOT EXISTS idx_followup_context_digest_number ON followup_context(digest_id, item_number);
-CREATE INDEX IF NOT EXISTS idx_item_enrichments_item_lookup ON item_enrichments(item_id, prompt_version, source_hash);
-CREATE INDEX IF NOT EXISTS idx_digest_enrichments_lookup ON digest_enrichments(digest_cache_key, prompt_version);
+CREATE INDEX IF NOT EXISTS idx_digests_profile_mode_generated ON digests(profile_key, mode, generated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sent_items_item_sent_at ON sent_items(profile_key, item_id, sent_at DESC);
+CREATE INDEX IF NOT EXISTS idx_followup_context_digest_number ON followup_context(profile_key, digest_id, item_number);
+CREATE INDEX IF NOT EXISTS idx_source_runs_profile_source_started ON source_runs(profile_key, source_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_llm_runs_profile_type_started ON llm_runs(profile_key, run_type, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_item_enrichments_item_lookup ON item_enrichments(profile_key, item_id, prompt_version, source_hash);
+CREATE INDEX IF NOT EXISTS idx_digest_enrichments_lookup ON digest_enrichments(profile_key, digest_cache_key, prompt_version);
 CREATE INDEX IF NOT EXISTS idx_signal_events_linked_url ON signal_events(linked_url);
 CREATE INDEX IF NOT EXISTS idx_signal_events_fetched_at ON signal_events(fetched_at DESC);
 CREATE INDEX IF NOT EXISTS idx_signal_event_matches_item ON signal_event_matches(item_id, created_at DESC);
@@ -233,6 +244,13 @@ export class NewsDatabase {
   private applyMigrations(): void {
     this.ensureColumn("normalized_items", "primary_source_layer", "TEXT NOT NULL DEFAULT 'primary'");
     this.ensureColumn("item_sources", "source_layer", "TEXT NOT NULL DEFAULT 'primary'");
+    this.ensureColumn("digests", "profile_key", "TEXT NOT NULL DEFAULT 'tech'");
+    this.ensureColumn("sent_items", "profile_key", "TEXT NOT NULL DEFAULT 'tech'");
+    this.ensureColumn("followup_context", "profile_key", "TEXT NOT NULL DEFAULT 'tech'");
+    this.ensureColumn("source_runs", "profile_key", "TEXT NOT NULL DEFAULT 'tech'");
+    this.ensureColumn("llm_runs", "profile_key", "TEXT NOT NULL DEFAULT 'tech'");
+    this.ensureColumn("item_enrichments", "profile_key", "TEXT NOT NULL DEFAULT 'tech'");
+    this.ensureColumn("digest_enrichments", "profile_key", "TEXT NOT NULL DEFAULT 'tech'");
   }
 
   private ensureColumn(tableName: string, columnName: string, columnSql: string): void {
@@ -245,13 +263,13 @@ export class NewsDatabase {
     }
   }
 
-  startSourceRun(sourceId: string, startedAt: string): number {
+  startSourceRun(sourceId: string, profileKey: ProfileKey, startedAt: string): number {
     const result = this.db
       .prepare(
-        `INSERT INTO source_runs (source_id, started_at, status)
-         VALUES (?, ?, 'running')`
+        `INSERT INTO source_runs (profile_key, source_id, started_at, status)
+         VALUES (?, ?, ?, 'running')`
       )
-      .run(sourceId, startedAt);
+      .run(profileKey, sourceId, startedAt);
     return Number(result.lastInsertRowid);
   }
 
@@ -417,29 +435,31 @@ export class NewsDatabase {
     return this.getNormalizedItemById(fuzzyMatch.id);
   }
 
-  listCandidateItems(minSeenAtIso: string): NormalizedItemRecord[] {
+  listCandidateItems(profileKey: ProfileKey, minSeenAtIso: string): NormalizedItemRecord[] {
     const rows = this.db
       .prepare<unknown[], CandidateItemRow>(
         `SELECT
            ni.*,
-           (SELECT MAX(si.sent_at) FROM sent_items si WHERE si.item_id = ni.id) AS last_sent_at,
+           (SELECT MAX(si.sent_at) FROM sent_items si WHERE si.profile_key = ? AND si.item_id = ni.id) AS last_sent_at,
            (SELECT COUNT(DISTINCT src.source_id) FROM item_sources src WHERE src.item_id = ni.id) AS cross_signal_count
          FROM normalized_items ni
          WHERE COALESCE(ni.published_at, ni.last_seen_at) >= ?
          ORDER BY COALESCE(ni.published_at, ni.last_seen_at) DESC`
       )
-      .all(minSeenAtIso);
+      .all(profileKey, minSeenAtIso);
 
     return rows.map((row) => this.hydrateNormalizedItem(row));
   }
 
-  saveDigest(result: DigestBuildResult, generatedAt: string): SavedDigestRecord {
+  saveDigest(profileKey: ProfileKey, result: DigestBuildResult, generatedAt: string): SavedDigestRecord {
     const inserted = this.db
       .prepare(
-        `INSERT INTO digests (mode, generated_at, window_start, window_end, header, body_text, items_json, themes_json, stats_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO digests (
+          profile_key, mode, generated_at, window_start, window_end, header, body_text, items_json, themes_json, stats_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
+        profileKey,
         result.mode,
         generatedAt,
         result.window.startUtc,
@@ -453,18 +473,18 @@ export class NewsDatabase {
 
     const digestId = Number(inserted.lastInsertRowid);
     const sentStatement = this.db.prepare(
-      `INSERT INTO sent_items (digest_id, item_id, slot, sent_at, send_reason)
-       VALUES (?, ?, ?, ?, ?)`
+      `INSERT INTO sent_items (profile_key, digest_id, item_id, slot, sent_at, send_reason)
+       VALUES (?, ?, ?, ?, ?, ?)`
     );
     const followupStatement = this.db.prepare(
-      `INSERT INTO followup_context (digest_id, item_number, item_id, created_at, context_json)
-       VALUES (?, ?, ?, ?, ?)`
+      `INSERT INTO followup_context (profile_key, digest_id, item_number, item_id, created_at, context_json)
+       VALUES (?, ?, ?, ?, ?, ?)`
     );
 
     const transaction = this.db.transaction((items: DigestEntry[]) => {
       items.forEach((item, index) => {
-        sentStatement.run(digestId, item.itemId, index + 1, generatedAt, item.sectionKey);
-        followupStatement.run(digestId, item.number, item.itemId, generatedAt, JSON.stringify(item));
+        sentStatement.run(profileKey, digestId, item.itemId, index + 1, generatedAt, item.sectionKey);
+        followupStatement.run(profileKey, digestId, item.number, item.itemId, generatedAt, JSON.stringify(item));
       });
     });
 
@@ -472,16 +492,16 @@ export class NewsDatabase {
     return this.getDigestById(digestId)!;
   }
 
-  getLatestDigest(mode?: string): SavedDigestRecord | null {
+  getLatestDigest(profileKey: ProfileKey, mode?: string): SavedDigestRecord | null {
     const row = mode
       ? this.db
           .prepare<unknown[], DigestRow>(
-            `SELECT * FROM digests WHERE mode = ? ORDER BY generated_at DESC LIMIT 1`
+            `SELECT * FROM digests WHERE profile_key = ? AND mode = ? ORDER BY generated_at DESC LIMIT 1`
           )
-          .get(mode)
+          .get(profileKey, mode)
       : this.db
-          .prepare<unknown[], DigestRow>(`SELECT * FROM digests ORDER BY generated_at DESC LIMIT 1`)
-          .get();
+          .prepare<unknown[], DigestRow>(`SELECT * FROM digests WHERE profile_key = ? ORDER BY generated_at DESC LIMIT 1`)
+          .get(profileKey);
 
     return row ? mapDigestRow(row) : null;
   }
@@ -491,8 +511,8 @@ export class NewsDatabase {
     return row ? mapDigestRow(row) : null;
   }
 
-  getFollowupContext(itemNumber: number, digestId?: number): DigestEntry | null {
-    const targetDigestId = digestId ?? this.getLatestDigest()?.id;
+  getFollowupContext(profileKey: ProfileKey, itemNumber: number, digestId?: number): DigestEntry | null {
+    const targetDigestId = digestId ?? this.getLatestDigest(profileKey)?.id;
     if (!targetDigestId) {
       return null;
     }
@@ -501,9 +521,9 @@ export class NewsDatabase {
       .prepare<unknown[], { context_json: string }>(
         `SELECT context_json
          FROM followup_context
-         WHERE digest_id = ? AND item_number = ?`
+         WHERE profile_key = ? AND digest_id = ? AND item_number = ?`
       )
-      .get(targetDigestId, itemNumber);
+      .get(profileKey, targetDigestId, itemNumber);
 
     return row ? (JSON.parse(row.context_json) as DigestEntry) : null;
   }
@@ -695,6 +715,7 @@ export class NewsDatabase {
   }
 
   startLlmRun(input: {
+    profileKey: ProfileKey;
     runType: LlmRunType;
     modelName: string;
     promptVersion: string;
@@ -703,10 +724,10 @@ export class NewsDatabase {
   }): number {
     const result = this.db
       .prepare(
-        `INSERT INTO llm_runs (run_type, model_name, prompt_version, input_hash, started_at, status)
-         VALUES (?, ?, ?, ?, ?, 'running')`
+        `INSERT INTO llm_runs (profile_key, run_type, model_name, prompt_version, input_hash, started_at, status)
+         VALUES (?, ?, ?, ?, ?, ?, 'running')`
       )
-      .run(input.runType, input.modelName, input.promptVersion, input.inputHash, input.startedAt);
+      .run(input.profileKey, input.runType, input.modelName, input.promptVersion, input.inputHash, input.startedAt);
 
     return Number(result.lastInsertRowid);
   }
@@ -735,20 +756,26 @@ export class NewsDatabase {
       );
   }
 
-  getItemEnrichment(itemId: number, promptVersion: string, sourceHash: string): ItemEnrichmentRecord | null {
+  getItemEnrichment(
+    profileKey: ProfileKey,
+    itemId: number,
+    promptVersion: string,
+    sourceHash: string
+  ): ItemEnrichmentRecord | null {
     const row = this.db
       .prepare<unknown[], ItemEnrichmentRow>(
         `SELECT *
          FROM item_enrichments
-         WHERE item_id = ? AND prompt_version = ? AND source_hash = ?
+         WHERE profile_key = ? AND item_id = ? AND prompt_version = ? AND source_hash = ?
          LIMIT 1`
       )
-      .get(itemId, promptVersion, sourceHash);
+      .get(profileKey, itemId, promptVersion, sourceHash);
 
     return row ? mapItemEnrichmentRow(row) : null;
   }
 
   saveItemEnrichment(input: {
+    profileKey: ProfileKey;
     itemId: number;
     llmRunId?: number | null;
     promptVersion: string;
@@ -764,11 +791,12 @@ export class NewsDatabase {
     this.db
       .prepare(
         `INSERT INTO item_enrichments (
-          item_id, llm_run_id, prompt_version, source_hash, summary_ko, why_important_ko,
+          profile_key, item_id, llm_run_id, prompt_version, source_hash, summary_ko, why_important_ko,
           confidence, uncertainty_notes_json, theme_tags_json, officialness_note, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(item_id, prompt_version, source_hash)
         DO UPDATE SET
+          profile_key = excluded.profile_key,
           llm_run_id = excluded.llm_run_id,
           summary_ko = excluded.summary_ko,
           why_important_ko = excluded.why_important_ko,
@@ -779,6 +807,7 @@ export class NewsDatabase {
           created_at = excluded.created_at`
       )
       .run(
+        input.profileKey,
         input.itemId,
         input.llmRunId ?? null,
         input.promptVersion,
@@ -792,27 +821,32 @@ export class NewsDatabase {
         input.createdAt
       );
 
-    const saved = this.getItemEnrichment(input.itemId, input.promptVersion, input.sourceHash);
+    const saved = this.getItemEnrichment(input.profileKey, input.itemId, input.promptVersion, input.sourceHash);
     if (!saved) {
       throw new Error(`Failed to load saved item enrichment for item ${input.itemId}`);
     }
     return saved;
   }
 
-  getDigestThemeEnrichment(digestCacheKey: string, promptVersion: string): DigestThemeEnrichmentRecord | null {
+  getDigestThemeEnrichment(
+    profileKey: ProfileKey,
+    digestCacheKey: string,
+    promptVersion: string
+  ): DigestThemeEnrichmentRecord | null {
     const row = this.db
       .prepare<unknown[], DigestEnrichmentRow>(
         `SELECT *
          FROM digest_enrichments
-         WHERE digest_cache_key = ? AND prompt_version = ?
+         WHERE profile_key = ? AND digest_cache_key = ? AND prompt_version = ?
          LIMIT 1`
       )
-      .get(digestCacheKey, promptVersion);
+      .get(profileKey, digestCacheKey, promptVersion);
 
     return row ? mapDigestEnrichmentRow(row) : null;
   }
 
   saveDigestThemeEnrichment(input: {
+    profileKey: ProfileKey;
     digestCacheKey: string;
     digestMode: DigestMode;
     llmRunId?: number | null;
@@ -823,16 +857,18 @@ export class NewsDatabase {
     this.db
       .prepare(
         `INSERT INTO digest_enrichments (
-          digest_cache_key, digest_mode, llm_run_id, prompt_version, themes_json, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?)
+          profile_key, digest_cache_key, digest_mode, llm_run_id, prompt_version, themes_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(digest_cache_key, prompt_version)
         DO UPDATE SET
+          profile_key = excluded.profile_key,
           digest_mode = excluded.digest_mode,
           llm_run_id = excluded.llm_run_id,
           themes_json = excluded.themes_json,
           created_at = excluded.created_at`
       )
       .run(
+        input.profileKey,
         input.digestCacheKey,
         input.digestMode,
         input.llmRunId ?? null,
@@ -841,7 +877,7 @@ export class NewsDatabase {
         input.createdAt
       );
 
-    const saved = this.getDigestThemeEnrichment(input.digestCacheKey, input.promptVersion);
+    const saved = this.getDigestThemeEnrichment(input.profileKey, input.digestCacheKey, input.promptVersion);
     if (!saved) {
       throw new Error(`Failed to load saved digest theme enrichment for cache key ${input.digestCacheKey}`);
     }
@@ -1102,6 +1138,7 @@ function shouldPreferIncomingCanonical(existingUrl: string, incomingUrl: string)
 function mapDigestRow(row: DigestRow): SavedDigestRecord {
   return {
     id: row.id,
+    profileKey: row.profile_key as ProfileKey,
     mode: row.mode as SavedDigestRecord["mode"],
     generatedAt: row.generated_at,
     windowStart: row.window_start,
@@ -1117,6 +1154,7 @@ function mapDigestRow(row: DigestRow): SavedDigestRecord {
 function mapItemEnrichmentRow(row: ItemEnrichmentRow): ItemEnrichmentRecord {
   return {
     id: row.id,
+    profileKey: row.profile_key as ProfileKey,
     itemId: row.item_id,
     llmRunId: row.llm_run_id,
     promptVersion: row.prompt_version,
@@ -1134,6 +1172,7 @@ function mapItemEnrichmentRow(row: ItemEnrichmentRow): ItemEnrichmentRecord {
 function mapDigestEnrichmentRow(row: DigestEnrichmentRow): DigestThemeEnrichmentRecord {
   return {
     id: row.id,
+    profileKey: row.profile_key as ProfileKey,
     digestCacheKey: row.digest_cache_key,
     digestMode: row.digest_mode as DigestMode,
     llmRunId: row.llm_run_id,
@@ -1216,6 +1255,7 @@ interface ItemSourceRow {
 
 interface DigestRow {
   id: number;
+  profile_key: string;
   mode: string;
   generated_at: string;
   window_start: string;
@@ -1229,6 +1269,7 @@ interface DigestRow {
 
 interface ItemEnrichmentRow {
   id: number;
+  profile_key: string;
   item_id: number;
   llm_run_id?: number | null;
   prompt_version: string;
@@ -1244,6 +1285,7 @@ interface ItemEnrichmentRow {
 
 interface DigestEnrichmentRow {
   id: number;
+  profile_key: string;
   digest_cache_key: string;
   digest_mode: string;
   llm_run_id?: number | null;

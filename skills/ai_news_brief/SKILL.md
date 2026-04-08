@@ -1,11 +1,11 @@
 # ai_news_brief
 
-This skill runs the local deterministic AI news briefing bot for a single Telegram owner.
+This skill runs the local deterministic news briefing bot for private OpenClaw workspaces, now with profile-aware `tech` and `finance` briefs.
 
 ## When to use it
 - Scheduled AM digest at 10:00 America/New_York
 - Scheduled PM digest at 20:00 America/New_York
-- Telegram DM follow-up commands like:
+- Discord or Telegram follow-up commands like:
   - `brief now`
   - `am brief now`
   - `pm brief now`
@@ -24,6 +24,10 @@ This skill runs the local deterministic AI news briefing bot for a single Telegr
 - Use exec to run the local scripts.
 - Return the script output as-is unless the user explicitly asks for explanation.
 - If the script fails because setup is incomplete, reply with the shortest actionable TODO.
+- Default profile mapping:
+  - `#tech-brief` -> `tech`
+  - `#finance-brief` -> `finance`
+  - `#assistant` / `#research` -> explicit profile or most recent thread profile
 
 ## Repo path convention
 
@@ -37,13 +41,17 @@ If the current workspace is already the OpenSec repo root, you may use:
 
 ## Commands
 - AM digest:
-  - `pnpm --dir ./projects/opensec-ai-news-brief/news-bot digest:am`
+  - `pnpm --dir ./projects/opensec-ai-news-brief/news-bot digest --mode am --profile tech`
 - PM digest:
-  - `pnpm --dir ./projects/opensec-ai-news-brief/news-bot digest:pm`
+  - `pnpm --dir ./projects/opensec-ai-news-brief/news-bot digest --mode pm --profile tech`
+- Finance AM digest:
+  - `pnpm --dir ./projects/opensec-ai-news-brief/news-bot digest --mode am --profile finance`
+- Finance PM digest:
+  - `pnpm --dir ./projects/opensec-ai-news-brief/news-bot digest --mode pm --profile finance`
 - Manual follow-up:
-  - `pnpm --dir ./projects/opensec-ai-news-brief/news-bot followup "<original user message>"`
+  - `pnpm --dir ./projects/opensec-ai-news-brief/news-bot followup --profile tech "<original user message>"`
 - Fetch only:
-  - `pnpm --dir ./projects/opensec-ai-news-brief/news-bot fetch`
+  - `pnpm --dir ./projects/opensec-ai-news-brief/news-bot fetch --profile tech`
 
 ## Intent routing
 - `brief now`: run the digest matching current ET time. Before 15:00 ET use AM, otherwise PM.
@@ -57,3 +65,11 @@ If the current workspace is already the OpenSec repo root, you may use:
 - `today themes`: show the latest stored theme bullets.
 - `ask <질문>`: answer from stored digest evidence with LLM help when available, and deterministic fallback otherwise.
 - `research <질문>`: do opt-in live LLM web research starting from stored digest context. If live research is unavailable, fall back to stored digest evidence and say so clearly.
+
+## Profile rules
+
+- `tech`:
+  - AI, tooling, OpenAI, repos, developer workflow
+- `finance`:
+  - macro, policy, regulation, and major-company signals
+- Keep evidence namespaces separate by profile even when the same canonical article appears in both.

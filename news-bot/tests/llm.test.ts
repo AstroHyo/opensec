@@ -55,6 +55,7 @@ describe("openai structured output parsing", () => {
 describe("digest enrichment helpers", () => {
   it("applies saved enrichment onto a digest entry", () => {
     const entry: DigestEntry = {
+      profileKey: "tech",
       number: 1,
       itemId: 42,
       sectionKey: "must_see",
@@ -74,6 +75,7 @@ describe("digest enrichment helpers", () => {
 
     const enrichment: ItemEnrichmentRecord = {
       id: 1,
+      profileKey: "tech",
       itemId: 42,
       llmRunId: 7,
       promptVersion: "item_enrichment_v1",
@@ -99,6 +101,7 @@ describe("digest enrichment helpers", () => {
 
   it("changes the theme cache key when digest explanations change", () => {
     const makeDigest = (summary: string): DigestBuildResult => ({
+      profileKey: "tech",
       mode: "pm",
       header: "[PM AI Wrap | 2026-04-02 ET]",
       window: {
@@ -111,6 +114,7 @@ describe("digest enrichment helpers", () => {
       themes: [],
       items: [
         {
+          profileKey: "tech",
           number: 1,
           itemId: 1,
           sectionKey: "top_developments",
