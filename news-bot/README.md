@@ -1,6 +1,6 @@
 # OpenSec AI News Brief
 
-Deterministic multi-profile news briefing engine for OpenClaw. It fetches curated signals locally, stores state in SQLite, renders Korean digests, and supports profile-aware follow-up from stored digest context. The primary control-plane target is now private Discord, with Telegram kept as a legacy/fallback delivery surface.
+Deterministic multi-profile news briefing engine for OpenClaw. It fetches curated signals locally, stores state in SQLite, renders Korean digests, and supports profile-aware follow-up from stored digest context. The primary control-plane target is now private Discord, with Telegram kept as a legacy/fallback delivery surface. Workspace-level memory capture and daily-note distillation live in the repo root rather than inside this engine package.
 
 ## What it does
 
@@ -40,6 +40,8 @@ Deterministic multi-profile news briefing engine for OpenClaw. It fetches curate
   - deterministic commands such as `show sources for 2`
   - bounded LLM explanation with `ask <질문>`
   - opt-in live web research with `research <질문>`
+
+This package is the digest engine, not the entire personal assistant runtime. Discord routing, approvals, coding lanes, and memory capture live in the OpenClaw workspace assets at the repository root.
 
 ## Core rules
 
@@ -260,6 +262,18 @@ Notes:
 - Keep one visible coordinator and let builder/researcher behavior stay hidden behind delegation.
 - Start or attach OpenClaw in the workspace root so `skills/ai_news_brief/SKILL.md` is available.
 - The current EC2 deployment path is `/srv/openclaw/workspace-personal/projects/opensec-ai-news-brief`.
+- On OpenClaw `2026.4.x`, prefer `openclaw agents bind --agent main --bind discord` over hand-editing `bindings` in the config file.
+- For a solo private guild, `requireMention: true` is a good starting posture, but switching to `false` can make the day-to-day UX much better once permissions and routing are stable.
+
+## Workspace memory loop
+
+The Discord-first control plane now ships a lightweight memory loop outside the engine package:
+
+- raw daily notes in `workspace-template/memory/YYYY-MM-DD.md`
+- curated durable memory in `workspace-template/MEMORY.md`
+- capture and distillation helpers in `../skills/memory_ops/` and `../scripts/ensure-daily-memory-note.sh`
+
+That keeps the digest engine deterministic while still letting the OpenClaw workspace remember stable preferences and operating facts over time.
 
 ## Installing Discord cron jobs
 

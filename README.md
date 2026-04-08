@@ -4,7 +4,7 @@
 
 **A Discord-first personal control plane with deterministic multi-profile news briefs**
 
-Curated sources in. Ranked Korean digests out. Optional LLM enrichment on top of a local, evidence-preserving core. One visible coordinator on Discord, with execution and research lanes behind it.
+Curated sources in. Ranked Korean digests out. Optional LLM enrichment on top of a local, evidence-preserving core. One visible coordinator on Discord, with execution, research, and memory-distillation lanes behind it.
 
 [Korean README](./README_KR.md) • [Architecture](./ARCHITECTURE.md) • [Product Engine](./news-bot/README.md) • [DB Schema](./docs/generated/db-schema.md)
 
@@ -36,6 +36,7 @@ If an LLM is available, it improves explanation quality. If it is not, the diges
 | Discord-first control plane | Workspace assets target a private Discord server with one front door |
 | Plain-text digest output | Digest text stays channel-safe for Discord, Telegram, or shell delivery |
 | Optional LLM layer | Item enrichment, theme synthesis, ask-mode explanation, and opt-in research |
+| Daily memory loop | Discord conversations can be distilled into daily notes first, then promoted into curated long-term memory |
 | Private control plane support | Includes OpenClaw workspace assets for Discord-first operations and DM approvals |
 
 ## How It Works
@@ -116,6 +117,7 @@ OpenSec already includes:
 - curated source ingestion
 - profile-aware digest generation for `tech` and `finance`
 - normalization, canonicalization, and deduplication
+- precision and early-warning sourcing layers
 - SQLite-backed local state
 - deterministic ranking and resend suppression
 - Korean digest rendering
@@ -124,6 +126,7 @@ OpenSec already includes:
 - `ask` follow-ups over stored evidence
 - `research` follow-ups with bounded live search and cited links
 - OpenClaw workspace bootstrap assets for private Discord use
+- daily note capture and memory-distillation scaffolding for Discord conversations
 
 Still planned or evolving:
 
@@ -142,6 +145,9 @@ The default adapters currently cover:
 - GeekNews
 - Techmeme
 - Hacker News
+- Bluesky watchlist signals
+  - early-warning only
+  - disabled by default
 
 `finance`
 
@@ -154,6 +160,36 @@ The default adapters currently cover:
   - PPI
   - ECI
 - major-company SEC filings
+
+## Discord Operating Model
+
+| Lane | Purpose | Typical requests |
+| --- | --- | --- |
+| `#assistant` | Front door for triage and lightweight help | general requests, routing, quick answers |
+| `#tech-brief` | Scheduled `tech` digest plus short follow-up | `expand 2`, `show sources for 2`, short `ask` |
+| `#finance-brief` | Scheduled `finance` digest plus short follow-up | macro summary, source lookup, short `ask` |
+| `#research` | Longer explanation and explicit live research | `research look deeper into item 2` |
+| `#coding` | Repo work, tests, and execution requests | `run tests`, `open a branch`, `fix this file` |
+| `DM` | Sensitive approvals and private escalations | approvals, secrets, private preferences |
+
+For a solo private guild, it is reasonable to start with `requireMention: true` and later switch it to `false` once routing and permissions are stable.
+
+## Memory Loop
+
+OpenSec does not dump every Discord message straight into long-term memory.
+
+Instead, the workspace is set up to use a two-step memory flow:
+
+- raw or semi-structured notes go into `memory/YYYY-MM-DD.md`
+- stable preferences, durable facts, and recurring operating rules get curated into `MEMORY.md`
+
+Supporting assets live in:
+
+- [`skills/memory_ops/`](./skills/memory_ops)
+- [`scripts/ensure-daily-memory-note.sh`](./scripts/ensure-daily-memory-note.sh)
+- [`workspace-template/memory/README.md`](./workspace-template/memory/README.md)
+
+Heartbeat is still intentionally conservative. The current posture is "capture first, distill deliberately" rather than silently auto-promoting conversation fragments into durable memory.
 
 ## Follow-up Modes
 
@@ -225,6 +261,7 @@ For real Discord and OpenClaw delivery, fill in:
 
 - your Discord bot token in the OpenClaw config
 - your Discord server and channel IDs in the OpenClaw config
+- your owner Discord user ID for allowlists and DM approvals
 
 Telegram variables are only needed if you keep Telegram as a fallback delivery surface:
 
@@ -249,9 +286,11 @@ Key files:
 
 - [`openclaw.personal.example.jsonc`](./openclaw.personal.example.jsonc)
 - [`scripts/setup-personal-workspace.sh`](./scripts/setup-personal-workspace.sh)
+- [`scripts/ensure-daily-memory-note.sh`](./scripts/ensure-daily-memory-note.sh)
 - [`workspace-template/`](./workspace-template)
 - [`skills/ai_news_brief/`](./skills/ai_news_brief)
 - [`skills/code_ops/`](./skills/code_ops)
+- [`skills/memory_ops/`](./skills/memory_ops)
 - [`skills/repo_ops/`](./skills/repo_ops)
 - [`skills/system_ops/`](./skills/system_ops)
 
@@ -266,8 +305,10 @@ Then:
 1. copy the example OpenClaw config
 2. fill in your Discord bot token, server ID, channel IDs, and owner ID
 3. start the OpenClaw gateway
-4. point OpenClaw at the personal workspace that includes these skills
-5. install the Discord cron jobs for `#tech-brief` and `#finance-brief`
+4. bind Discord to the main agent with `openclaw agents bind --agent main --bind discord`
+5. point OpenClaw at the personal workspace that includes these skills
+6. install the Discord cron jobs for `#tech-brief` and `#finance-brief`
+7. scaffold the first daily note with `bash ./scripts/ensure-daily-memory-note.sh`
 
 ## Design Principles
 

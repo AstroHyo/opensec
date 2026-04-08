@@ -6,29 +6,18 @@
       skipBootstrap: true,
       userTimezone: "America/New_York",
       model: {
-        primary: "anthropic/claude-sonnet-4-6",
-        fallbacks: ["openai/gpt-5.2"],
+        primary: "openai/gpt-5.4",
+        fallbacks: ["openai/gpt-5.4-mini"],
       },
     },
     list: [
       {
-        id: "coordinator",
-        name: "Coordinator",
+        id: "main",
+        name: "Main",
         default: true,
       },
     ],
   },
-
-  bindings: [
-    // Keep one visible front door. Hidden specialists should be spawned or delegated internally.
-    {
-      match: {
-        channel: "discord",
-        peer: { kind: "guild", id: "YOUR_SERVER_ID" },
-      },
-      agentId: "coordinator",
-    },
-  ],
 
   commands: {
     native: "auto",
@@ -43,6 +32,7 @@
       groupPolicy: "allowlist",
       guilds: {
         YOUR_SERVER_ID: {
+          users: ["YOUR_USER_ID"],
           requireMention: true,
           channels: {
             YOUR_ASSISTANT_CHANNEL_ID: { allow: true },
@@ -75,6 +65,10 @@
       keepLines: 2000,
     },
   },
+
+  // After first startup on OpenClaw 2026.4.x, create the route with:
+  //   openclaw agents bind --agent main --bind discord
+  // This lets the installed OpenClaw version write a binding shape that matches its own schema.
 
   // Telegram can remain as a fallback channel until Discord is fully stable.
 }
