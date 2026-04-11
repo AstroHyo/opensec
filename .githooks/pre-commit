@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+ROOT="$(git rev-parse --show-toplevel)"
+exec "$ROOT/.githooks/private_training_guard.sh" staged

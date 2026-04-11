@@ -75,6 +75,11 @@ Requires DM approval plus a second explicit confirmation.
 - Never live-rewrite your own bootstrap or policy files.
 - Self-edit must always use branch/PR flow.
 - L3 and L4 actions require the coordinator to confirm approval state before execution.
+- Never stage, commit, or push anything from `/srv/openclaw/workspace-training-private` into the OpenSec public repo.
+- Treat `/srv/openclaw/workspace-training-private` as a private workspace boundary:
+  - no copying of private `SOUL.md`, `AGENTS.md`, `USER.md`, `MEMORY.md`, `HEARTBEAT.md`, private skills, private scripts, exports, DB files, or daily notes into the public repo
+  - no OpenSec branch/PR flow for private training-bot changes
+  - if a public-safe scaffold is needed, recreate only the minimal redacted version inside the repo
 
 ## Memory
 
