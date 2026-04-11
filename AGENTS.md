@@ -33,6 +33,11 @@ OpenClaw is an external orchestrator. This repo does not implement OpenClaw itse
    - score reasons
 5. Prefer official sources over commentary when both exist.
 6. Silence is better than low-signal filler.
+7. Never stage, commit, or push files from `/srv/openclaw/workspace-training-private` into this OpenSec public repo.
+8. Treat `/srv/openclaw/workspace-training-private` as a separate private system of record:
+   - do not copy its private rules, memory, scripts, exports, or logs into this repo unless the user explicitly asks for a public-safe scaffold
+   - do not use OpenSec branch, commit, or PR flow for private training workspace changes
+   - when in doubt, keep training-bot changes in the private workspace or its future private repo only
 
 ## LLM Design Rules
 
@@ -69,6 +74,7 @@ For any meaningful architecture change:
 ## Useful Commands
 
 ```bash
+bash ./scripts/install-git-hooks.sh
 pnpm --dir ./news-bot test
 pnpm --dir ./news-bot digest:am
 pnpm --dir ./news-bot digest:pm
