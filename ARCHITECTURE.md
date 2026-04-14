@@ -223,6 +223,37 @@ Profile-specific logic:
 - `tech` favors OpenAI, tooling, repos, and developer workflow
 - `finance` favors macro, policy, regulation, and major-company signals
 
+## Planned Reliability and Cost Layer
+
+The next planned iteration adds two pipeline-level controls:
+
+### 1. Strong recent-item suppression
+
+The current resend logic is score-aware but still too soft for a personal operator brief.
+
+Planned direction:
+
+- move from mostly score-penalty-based repeat handling to a stronger 72-hour suppression gate
+- apply suppression before final section assembly, not at render time
+- treat cross-source sightings of the same canonical story or repo as one recent item
+- allow resend only for materially updated high-value items such as official OpenAI updates
+
+This keeps the brief focused on new information rather than rediscovering the same item through a different feed path.
+
+### 2. Tiered model routing
+
+LLM use should be selected by task difficulty, not by call-site convenience.
+
+Planned direction:
+
+- Tier 0: deterministic only
+- Tier 1: small reasoning model for bounded per-item enrichment and short follow-ups
+- Tier 2: stronger synthesis model for multi-item daily themes
+- Tier 3: deep model only for explicit research or long-form operator asks
+
+The scheduled digest path should stay on Tier 1 and Tier 2 only.
+Tier 3 is reserved for explicit opt-in research paths.
+
 ## Follow-up Modes
 
 The digest pipeline stays deterministic. Follow-up is layered on top:

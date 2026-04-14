@@ -15,6 +15,10 @@ Current active plan:
 - [`./exec-plans/active/2026-04-05-sourcing-expansion-precision-and-early-warning.md`](./exec-plans/active/2026-04-05-sourcing-expansion-precision-and-early-warning.md)
 - [`./exec-plans/active/2026-04-08-discord-personal-control-plane-v1-1.md`](./exec-plans/active/2026-04-08-discord-personal-control-plane-v1-1.md)
 - [`./exec-plans/active/2026-04-08-discord-memory-capture-and-distillation.md`](./exec-plans/active/2026-04-08-discord-memory-capture-and-distillation.md)
+- [`./exec-plans/active/2026-04-08-training-bot-private-workspace-rollout.md`](./exec-plans/active/2026-04-08-training-bot-private-workspace-rollout.md)
+- [`./exec-plans/active/2026-04-10-xiaohongshu-sf-rent-watcher.md`](./exec-plans/active/2026-04-10-xiaohongshu-sf-rent-watcher.md)
+- [`./exec-plans/active/2026-04-14-tech-brief-insight-overhaul.md`](./exec-plans/active/2026-04-14-tech-brief-insight-overhaul.md)
+- [`./exec-plans/active/2026-04-14-three-day-dedupe-and-tiered-model-routing.md`](./exec-plans/active/2026-04-14-three-day-dedupe-and-tiered-model-routing.md)
 
 Rule of thumb:
 
