@@ -12,6 +12,11 @@ export function buildItemEnrichmentPrompts(input: { mode: DigestMode; items: Dig
     "Prefer official interpretations when the source is official.",
     "Avoid hype language and avoid generic claims like 'important for AI' or 'useful for developers' unless you explain the concrete mechanism.",
     "Engineer relevance must explain what changes for APIs, tooling, workflow, infra, evals, automation, or productization.",
+    "Each field must add new information instead of paraphrasing the previous field.",
+    "Name the changed interface, runtime boundary, workflow step, deployment gate, cost/latency envelope, or abstraction layer whenever the evidence supports it.",
+    "Avoid stock phrases such as '생태계가 재정렬된다', '중요한 신호다', '촉진한다', or '보여준다' unless you also name the actor, mechanism, and practical consequence.",
+    "Do not spend tokens repeating the title or source label. Spend them on the changed mechanism and downstream consequence.",
+    "For openai_angle_ko, use null unless the evidence supports a broader OpenAI roadmap, product boundary, or resourcing implication that is not already stated elsewhere.",
     "Trend and cause/effect fields are allowed to be inferential, but they must stay tightly grounded in the supplied evidence.",
     "If evidence is thin, reflect that in uncertainty_notes instead of guessing.",
     "Return JSON only."
@@ -57,14 +62,14 @@ export function buildItemEnrichmentPrompts(input: { mode: DigestMode; items: Dig
     `Digest mode: ${input.mode}`,
     "Analyze every item below.",
     "For each item, produce:",
-    "- what_changed_ko: 2 to 3 Korean sentences describing what concretely changed",
-    "- engineer_relevance_ko: 1 to 2 Korean sentences explaining the direct engineering impact",
-    "- ai_ecosystem_ko: 1 to 2 Korean sentences explaining the ecosystem impact",
-    "- openai_angle_ko: optional, only if there is a real OpenAI angle",
-    "- trend_signal_ko: 1 Korean sentence on the larger trend",
-    "- cause_effect_ko: 1 Korean sentence on why this is happening now or what it will trigger next",
+    "- what_changed_ko: at most 2 Korean sentences, fact-first, describing the changed product/policy/runtime/repo behavior; do not just restate the title",
+    "- engineer_relevance_ko: 1 to 2 Korean sentences naming one concrete engineering action, changed interface, or changed workflow layer",
+    "- ai_ecosystem_ko: 1 Korean sentence explaining who in the ecosystem must respond or adapt, and to what concrete shift",
+    "- openai_angle_ko: null unless there is a non-obvious OpenAI roadmap or product-boundary implication beyond the article summary",
+    "- trend_signal_ko: 1 Korean sentence naming the stack layer or market direction that is changing; avoid empty umbrella phrases",
+    "- cause_effect_ko: 1 Korean sentence connecting a present trigger to the most likely next effect",
     "- watchpoints_ko: 1 to 3 bullets for what to verify next",
-    "- evidence_spans: 2 to 4 short quotes or snippets distilled from the supplied evidence bundle",
+    "- evidence_spans: 2 to 4 short snippets distilled from the supplied evidence bundle",
     "- novelty_score: 0 to 1",
     "- insight_score: 0 to 1",
     "- confidence: 0 to 1",
@@ -73,6 +78,8 @@ export function buildItemEnrichmentPrompts(input: { mode: DigestMode; items: Dig
     "- officialness_note: classify the item",
     "Do not repeat the source label as the answer.",
     "Do not write filler about why AI matters unless it is tied to the concrete item.",
+    "Bad pattern: '이 발표는 생태계 재정렬을 촉진합니다.'",
+    "Good pattern: 'Hosted container runtime이 공식 API boundary 안으로 들어오면 agent framework가 바깥 wrapper 대신 permission, state, eval 레이어로 경쟁하게 됩니다.'",
     "",
     JSON.stringify(itemsPayload, null, 2)
   ].join("\n");
@@ -119,6 +126,7 @@ export function buildThemeSynthesisPrompts(input: { mode: DigestMode; items: Dig
     "Do not invent cross-item relationships unless they are directly supported by the provided summaries and evidence.",
     "Write concise Korean bullets, preserving English product and repo names.",
     "Avoid hype and avoid generic advice.",
+    "Do not use vague industry-wide claims unless you name the layer that changed and why it matters now.",
     "Return JSON only."
   ].join(" ");
 

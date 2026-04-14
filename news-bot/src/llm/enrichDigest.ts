@@ -134,23 +134,23 @@ async function enrichItems(
         llmRunId: runId,
         promptVersion: ITEM_ENRICHMENT_PROMPT_VERSION,
         sourceHash: buildItemSourceHash(item, contexts.get(item.itemId) ?? null),
-        summaryKo: truncate(collapseWhitespace(enrichment.what_changed_ko), 240),
+        summaryKo: truncate(collapseWhitespace(enrichment.what_changed_ko), 220),
         whyImportantKo: truncate(
           [enrichment.engineer_relevance_ko, enrichment.ai_ecosystem_ko].map((value) => collapseWhitespace(value)).join(" "),
-          280
+          220
         ),
-        whatChangedKo: truncate(collapseWhitespace(enrichment.what_changed_ko), 600),
-        engineerRelevanceKo: truncate(collapseWhitespace(enrichment.engineer_relevance_ko), 360),
-        aiEcosystemKo: truncate(collapseWhitespace(enrichment.ai_ecosystem_ko), 360),
-        openAiAngleKo: enrichment.openai_angle_ko ? truncate(collapseWhitespace(enrichment.openai_angle_ko), 280) : null,
-        trendSignalKo: truncate(collapseWhitespace(enrichment.trend_signal_ko), 260),
-        causeEffectKo: truncate(collapseWhitespace(enrichment.cause_effect_ko), 260),
-        watchpoints: enrichment.watchpoints_ko.map((value) => truncate(collapseWhitespace(value), 160)),
-        evidenceSpans: enrichment.evidence_spans.map((value) => truncate(collapseWhitespace(value), 220)),
+        whatChangedKo: truncate(collapseWhitespace(enrichment.what_changed_ko), 420),
+        engineerRelevanceKo: truncate(collapseWhitespace(enrichment.engineer_relevance_ko), 240),
+        aiEcosystemKo: truncate(collapseWhitespace(enrichment.ai_ecosystem_ko), 220),
+        openAiAngleKo: enrichment.openai_angle_ko ? truncate(collapseWhitespace(enrichment.openai_angle_ko), 180) : null,
+        trendSignalKo: truncate(collapseWhitespace(enrichment.trend_signal_ko), 180),
+        causeEffectKo: truncate(collapseWhitespace(enrichment.cause_effect_ko), 180),
+        watchpoints: enrichment.watchpoints_ko.map((value) => truncate(collapseWhitespace(value), 120)),
+        evidenceSpans: enrichment.evidence_spans.map((value) => truncate(collapseWhitespace(value), 180)),
         noveltyScore: enrichment.novelty_score,
         insightScore: enrichment.insight_score,
         confidence: enrichment.confidence,
-        uncertaintyNotes: enrichment.uncertainty_notes.map((value) => truncate(collapseWhitespace(value), 120)),
+        uncertaintyNotes: enrichment.uncertainty_notes.map((value) => truncate(collapseWhitespace(value), 110)),
         themeTags: enrichment.theme_tags.map((value) => truncate(collapseWhitespace(value), 32)),
         officialnessNote: enrichment.officialness_note,
         createdAt: now.toUTC().toISO() ?? new Date().toISOString()
@@ -314,7 +314,7 @@ export function applyItemEnrichment(item: DigestEntry, enrichment: ItemEnrichmen
   item.whatChanged = enrichment.whatChangedKo ?? enrichment.summaryKo;
   item.engineerRelevance = enrichment.engineerRelevanceKo ?? item.engineerRelevance;
   item.aiEcosystem = enrichment.aiEcosystemKo ?? item.aiEcosystem;
-  item.openAiAngle = enrichment.openAiAngleKo ?? item.openAiAngle ?? null;
+  item.openAiAngle = enrichment.openAiAngleKo ?? null;
   item.trendSignal = enrichment.trendSignalKo ?? item.trendSignal;
   item.causeEffect = enrichment.causeEffectKo ?? item.causeEffect;
   item.watchpoints = enrichment.watchpoints.length > 0 ? enrichment.watchpoints : item.watchpoints;

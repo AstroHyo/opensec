@@ -157,6 +157,64 @@ describe("digest enrichment helpers", () => {
     expect(entry.finalScore).toBeGreaterThan(90);
   });
 
+  it("clears fallback OpenAI angle when the enrichment explicitly returns null", () => {
+    const entry: DigestEntry = {
+      profileKey: "tech",
+      number: 1,
+      itemId: 7,
+      sectionKey: "top_signals",
+      sourceType: "openai_official",
+      itemKind: "engineering",
+      title: "Agent runtime update",
+      summary: "old summary",
+      whyImportant: "old why",
+      whatChanged: "OpenAI가 hosted runtime을 추가했습니다.",
+      engineerRelevance: "eval harness를 다시 봐야 합니다.",
+      aiEcosystem: "agent tooling 레이어가 조정됩니다.",
+      openAiAngle: "OpenAI가 어디에 자원을 쓰는지 보여주는 신호입니다.",
+      trendSignal: "실행 스택이 두꺼워집니다.",
+      causeEffect: "wrapper ecosystem이 재편됩니다.",
+      contentSnippet: "snippet",
+      primaryUrl: "https://openai.com/news/runtime",
+      sourceLabel: "OpenAI / Engineering",
+      score: 98,
+      scoreReasons: ["OpenAI 공식 소스"],
+      sourceLinks: [{ label: "OpenAI", url: "https://openai.com/news/runtime" }],
+      keywords: ["OpenAI", "agents"],
+      metadata: {}
+    };
+
+    const enrichment: ItemEnrichmentRecord = {
+      id: 2,
+      profileKey: "tech",
+      itemId: 7,
+      llmRunId: 8,
+      promptVersion: "item_enrichment_v2",
+      sourceHash: "def",
+      summaryKo: "새 요약",
+      whyImportantKo: "새 중요성",
+      whatChangedKo: "Responses API 안에서 shell 실행이 가능해졌습니다.",
+      engineerRelevanceKo: "permission과 sandbox 경계를 다시 설계해야 합니다.",
+      aiEcosystemKo: "framework가 wrapper보다 policy/eval 경쟁으로 이동합니다.",
+      openAiAngleKo: null,
+      trendSignalKo: "agent runtime이 API boundary 안으로 들어오는 흐름입니다.",
+      causeEffectKo: "기존 wrapper 생태계가 재편될 수 있습니다.",
+      watchpoints: [],
+      evidenceSpans: [],
+      noveltyScore: 0.7,
+      insightScore: 0.84,
+      confidence: 0.88,
+      uncertaintyNotes: [],
+      themeTags: ["OpenAI"],
+      officialnessNote: "official_openai",
+      createdAt: "2026-04-14T00:00:00Z"
+    };
+
+    applyItemEnrichment(entry, enrichment);
+
+    expect(entry.openAiAngle).toBeNull();
+  });
+
   it("changes the theme cache key when digest explanations change", () => {
     const makeDigest = (summary: string): DigestBuildResult => ({
       profileKey: "tech",

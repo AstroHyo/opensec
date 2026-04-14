@@ -13,7 +13,7 @@ import type {
   ScoreBreakdown
 } from "../types.js";
 import { resolveDigestWindow } from "../util/timeWindow.js";
-import { truncate } from "../util/text.js";
+import { collapseWhitespace, truncate } from "../util/text.js";
 import { renderTelegramDigest } from "./renderTelegram.js";
 
 interface BuildDigestParams {

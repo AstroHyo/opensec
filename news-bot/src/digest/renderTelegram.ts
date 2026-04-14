@@ -63,11 +63,85 @@ function formatItemBlock(item: DigestEntry): string[] {
     `AI 맥락: ${collapseWhitespace(item.aiEcosystem ?? item.whyImportant)}`
   ];
 
-  if (item.openAiAngle) {
-    lines.push(`OpenAI 각도: ${collapseWhitespace(item.openAiAngle)}`);
+  const openAiAngle = selectOpenAiAngle(item);
+  if (openAiAngle) {
+    lines.push(`OpenAI 각도: ${openAiAngle}`);
   }
 
-  lines.push(`변화 신호: ${collapseWhitespace(item.trendSignal ?? item.causeEffect ?? item.whyImportant)}`);
+  lines.push(`변화 신호: ${pickChangeSignal(item)}`);
   lines.push(`링크: ${item.primaryUrl}`);
   return lines;
+}
+
+function pickChangeSignal(item: DigestEntry): string {
+  const trendSignal = collapseWhitespace(item.trendSignal ?? "");
+  const causeEffect = collapseWhitespace(item.causeEffect ?? "");
+
+  if (!trendSignal) {
+    return causeEffect || collapseWhitespace(item.whyImportant);
+  }
+
+  if (causeEffect && isGenericSignal(trendSignal)) {
+    return causeEffect;
+  }
+
+  return trendSignal;
+}
+
+function selectOpenAiAngle(item: DigestEntry): string | null {
+  const candidate = collapseWhitespace(item.openAiAngle ?? "");
+  if (!candidate) {
+    return null;
+  }
+
+  const comparisonTargets = [
+    item.whatChanged ?? item.summary,
+    item.engineerRelevance ?? item.whyImportant,
+    item.aiEcosystem ?? "",
+    pickChangeSignal(item)
+  ];
+
+  const redundant = comparisonTargets.some((target) => similarityScore(candidate, target) >= 0.74);
+  if (redundant) {
+    return null;
+  }
+
+  if (/핵심입니다\.?$/.test(candidate) && similarityScore(candidate, item.whatChanged ?? item.summary) >= 0.55) {
+    return null;
+  }
+
+  return candidate;
+}
+
+function isGenericSignal(value: string): boolean {
+  return /(흐름입니다|추세입니다|방향입니다|방향성|자리잡|보여줍니다|재정렬|촉진합니다|표준화|진화하고|반영합니다)/.test(value);
+}
+
+function similarityScore(left: string, right: string): number {
+  const leftTokens = tokenizeForComparison(left);
+  const rightTokens = tokenizeForComparison(right);
+  if (leftTokens.size === 0 || rightTokens.size === 0) {
+    return 0;
+  }
+
+  let overlap = 0;
+  for (const token of leftTokens) {
+    if (rightTokens.has(token)) {
+      overlap += 1;
+    }
+  }
+
+  return overlap / Math.min(leftTokens.size, rightTokens.size);
+}
+
+function tokenizeForComparison(value: string): Set<string> {
+  return new Set(
+    collapseWhitespace(value)
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, " ")
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter((token) => token.length >= 2)
+      .filter((token) => !["openai", "official", "update", "이번", "항목", "공식", "핵심", "입니다"].includes(token))
+  );
 }
