@@ -3,6 +3,7 @@ import type { AppConfig } from "../config.js";
 import { NewsDatabase } from "../db.js";
 import { generateStructuredJsonWithWebSearch } from "../llm/openaiClient.js";
 import { buildResearchAnswerPrompts } from "../llm/promptTemplates.js";
+import { estimateLlmCostUsd, routeLlmTask } from "../llm/taskRouter.js";
 import {
   RESEARCH_FOLLOWUP_PROMPT_VERSION,
   researchFollowupJsonSchema,
@@ -48,8 +49,15 @@ export async function answerResearchFollowup(input: {
     return "질문과 연결할 저장된 digest 항목을 찾지 못했습니다. 항목 번호나 주제를 조금 더 구체적으로 적어주세요.";
   }
 
-  const apiKey = input.config.openAiApiKey;
-  if (!input.config.llm.enabled || !apiKey) {
+  const route = routeLlmTask({
+    config: input.config,
+    taskKey: "followup_research",
+    spentTodayUsd: input.db.getDailyLlmSpendUsd(
+      input.profileKey,
+      input.now.startOf("day").toUTC().toISO() ?? startedIso(input.now)
+    )
+  });
+  if (!route.enabled || !route.apiKey) {
     return renderResearchFallback(
       await answerAskFollowup({
         db: input.db,
@@ -89,8 +97,11 @@ export async function answerResearchFollowup(input: {
   );
   const runId = input.db.startLlmRun({
     profileKey: input.profileKey,
-    runType: "followup_research",
-    modelName: input.config.llm.researchModel,
+    runType: route.runType,
+    taskKey: route.taskKey,
+    taskTier: route.tier,
+    provider: route.provider,
+    modelName: route.model,
     promptVersion: RESEARCH_FOLLOWUP_PROMPT_VERSION,
     inputHash,
     startedAt
@@ -98,14 +109,14 @@ export async function answerResearchFollowup(input: {
 
   try {
     const response = await generateStructuredJsonWithWebSearch({
-      apiKey,
-      model: input.config.llm.researchModel,
+      apiKey: route.apiKey,
+      model: route.model,
       schemaName: "followup_research",
       schema: researchFollowupJsonSchema,
       validator: researchFollowupSchema,
       systemPrompt: prompts.systemPrompt,
       userPrompt: prompts.userPrompt,
-      timeoutMs: input.config.llm.timeoutMs
+      timeoutMs: route.timeoutMs
     });
 
     input.db.finishLlmRun({
@@ -113,7 +124,12 @@ export async function answerResearchFollowup(input: {
       status: "ok",
       completedAt: input.now.toUTC().toISO() ?? new Date().toISOString(),
       latencyMs: Date.now() - startedMillis,
-      tokenUsage: response.usage ?? null
+      tokenUsage: response.usage ?? null,
+      estimatedCostUsd: estimateLlmCostUsd({
+        provider: route.provider,
+        model: route.model,
+        usage: response.usage ?? null
+      })
     });
 
     const allowedNumbers = new Set(selectedItems.map((item) => item.number));
@@ -152,6 +168,10 @@ export async function answerResearchFollowup(input: {
       "live research가 실패해서 저장된 digest 근거로 먼저 답했습니다."
     );
   }
+}
+
+function startedIso(now: DateTime): string {
+  return now.toUTC().toISO() ?? new Date().toISOString();
 }
 
 function augmentQuestionWithSignals(

@@ -4,6 +4,7 @@ import Database from "better-sqlite3";
 import type { HousingCandidateRecord, HousingDecision, HousingNotificationRecord } from "./housing/types.js";
 import { canonicalizeUrl, normalizeTitle, sha256Hex } from "./util/canonicalize.js";
 import { titleSimilarity } from "./util/dedupe.js";
+import { buildSuppressionFingerprintFromEntry, type RecentSentIdentity } from "./util/suppression.js";
 import { collapseWhitespace, firstNonEmpty, uniqueStrings } from "./util/text.js";
 import type {
   ArticleContextRecord,
@@ -16,7 +17,10 @@ import type {
   SignalEventRecord,
   SignalMatchRecord,
   ItemSourceRecord,
+  LlmProvider,
   LlmRunRecord,
+  LlmTaskKey,
+  LlmTaskTier,
   LlmRunType,
   NormalizedItemRecord,
   SavedDigestRecord,
@@ -115,6 +119,15 @@ CREATE TABLE IF NOT EXISTS sent_items (
   slot INTEGER NOT NULL,
   sent_at TEXT NOT NULL,
   send_reason TEXT,
+  section_key TEXT,
+  canonical_identity_hash TEXT,
+  story_cluster_hash TEXT,
+  title_snapshot TEXT,
+  url_snapshot TEXT,
+  suppression_basis_json TEXT NOT NULL DEFAULT '{}',
+  override_reason TEXT,
+  content_source_hash TEXT,
+  last_updated_snapshot TEXT,
   PRIMARY KEY (digest_id, item_id)
 );
 
@@ -145,6 +158,9 @@ CREATE TABLE IF NOT EXISTS llm_runs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   profile_key TEXT NOT NULL DEFAULT 'tech',
   run_type TEXT NOT NULL,
+  task_key TEXT,
+  task_tier INTEGER,
+  provider TEXT,
   model_name TEXT NOT NULL,
   prompt_version TEXT NOT NULL,
   input_hash TEXT NOT NULL,
@@ -153,6 +169,7 @@ CREATE TABLE IF NOT EXISTS llm_runs (
   status TEXT NOT NULL,
   latency_ms INTEGER,
   token_usage_json TEXT,
+  estimated_cost_usd REAL,
   error_text TEXT
 );
 
@@ -305,9 +322,11 @@ CREATE INDEX IF NOT EXISTS idx_normalized_items_title_hash ON normalized_items(t
 CREATE INDEX IF NOT EXISTS idx_normalized_items_last_seen ON normalized_items(last_seen_at);
 CREATE INDEX IF NOT EXISTS idx_digests_profile_mode_generated ON digests(profile_key, mode, generated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sent_items_item_sent_at ON sent_items(profile_key, item_id, sent_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sent_items_recent_identity ON sent_items(profile_key, sent_at DESC, canonical_identity_hash, story_cluster_hash);
 CREATE INDEX IF NOT EXISTS idx_followup_context_digest_number ON followup_context(profile_key, digest_id, item_number);
 CREATE INDEX IF NOT EXISTS idx_source_runs_profile_source_started ON source_runs(profile_key, source_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_llm_runs_profile_type_started ON llm_runs(profile_key, run_type, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_llm_runs_profile_completed ON llm_runs(profile_key, completed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_item_enrichments_item_lookup ON item_enrichments(profile_key, item_id, prompt_version, source_hash);
 CREATE INDEX IF NOT EXISTS idx_digest_enrichments_lookup ON digest_enrichments(profile_key, digest_cache_key, prompt_version);
 CREATE INDEX IF NOT EXISTS idx_article_contexts_item_lookup ON article_contexts(item_id, source_hash);
@@ -341,9 +360,22 @@ export class NewsDatabase {
     this.ensureColumn("item_sources", "source_layer", "TEXT NOT NULL DEFAULT 'primary'");
     this.ensureColumn("digests", "profile_key", "TEXT NOT NULL DEFAULT 'tech'");
     this.ensureColumn("sent_items", "profile_key", "TEXT NOT NULL DEFAULT 'tech'");
+    this.ensureColumn("sent_items", "section_key", "TEXT");
+    this.ensureColumn("sent_items", "canonical_identity_hash", "TEXT");
+    this.ensureColumn("sent_items", "story_cluster_hash", "TEXT");
+    this.ensureColumn("sent_items", "title_snapshot", "TEXT");
+    this.ensureColumn("sent_items", "url_snapshot", "TEXT");
+    this.ensureColumn("sent_items", "suppression_basis_json", "TEXT NOT NULL DEFAULT '{}'");
+    this.ensureColumn("sent_items", "override_reason", "TEXT");
+    this.ensureColumn("sent_items", "content_source_hash", "TEXT");
+    this.ensureColumn("sent_items", "last_updated_snapshot", "TEXT");
     this.ensureColumn("followup_context", "profile_key", "TEXT NOT NULL DEFAULT 'tech'");
     this.ensureColumn("source_runs", "profile_key", "TEXT NOT NULL DEFAULT 'tech'");
     this.ensureColumn("llm_runs", "profile_key", "TEXT NOT NULL DEFAULT 'tech'");
+    this.ensureColumn("llm_runs", "task_key", "TEXT");
+    this.ensureColumn("llm_runs", "task_tier", "INTEGER");
+    this.ensureColumn("llm_runs", "provider", "TEXT");
+    this.ensureColumn("llm_runs", "estimated_cost_usd", "REAL");
     this.ensureColumn("item_enrichments", "profile_key", "TEXT NOT NULL DEFAULT 'tech'");
     this.ensureColumn("digest_enrichments", "profile_key", "TEXT NOT NULL DEFAULT 'tech'");
     this.ensureColumn("item_enrichments", "what_changed_ko", "TEXT");
@@ -848,6 +880,72 @@ export class NewsDatabase {
     return rows.map((row) => this.hydrateNormalizedItem(row));
   }
 
+  listRecentSentItems(profileKey: ProfileKey, sinceIso: string): RecentSentIdentity[] {
+    return this.db
+      .prepare<unknown[], RecentSentItemRow>(
+        `SELECT
+           si.item_id,
+           si.sent_at,
+           si.section_key,
+           si.canonical_identity_hash,
+           si.story_cluster_hash,
+           si.title_snapshot,
+           si.url_snapshot,
+           si.content_source_hash,
+           si.last_updated_snapshot,
+           ni.normalized_title,
+           ni.title_hash,
+           ni.repo_owner,
+           ni.repo_name,
+           ni.source_type
+         FROM sent_items si
+         JOIN normalized_items ni ON ni.id = si.item_id
+         WHERE si.profile_key = ?
+           AND si.sent_at >= ?
+         ORDER BY si.sent_at DESC`
+      )
+      .all(profileKey, sinceIso)
+      .map((row) => {
+        const repoKey =
+          row.repo_owner && row.repo_name ? `${row.repo_owner}/${row.repo_name}`.toLowerCase() : null;
+        return {
+          itemId: row.item_id,
+          sentAt: row.sent_at,
+          sectionKey: row.section_key,
+          canonicalIdentityHash:
+            row.canonical_identity_hash ??
+            sha256Hex(
+              `canonical:${canonicalizeUrl((row.url_snapshot && row.url_snapshot.length > 0) ? row.url_snapshot : `https://suppressed.invalid/item/${row.item_id}`)}`
+            ),
+          storyClusterHash:
+            row.story_cluster_hash ??
+            sha256Hex(repoKey ? `repo:${repoKey}` : `story:${row.normalized_title ?? normalizeTitle(row.title_snapshot ?? "")}`),
+          titleSnapshot: row.title_snapshot ?? "",
+          urlSnapshot: row.url_snapshot ?? "",
+          repoKey,
+          normalizedTitle: row.normalized_title ?? normalizeTitle(row.title_snapshot ?? ""),
+          titleHash: row.title_hash,
+          sourceType: row.source_type as NormalizedItemRecord["sourceType"],
+          contentSourceHash: row.content_source_hash,
+          lastUpdatedSnapshot: row.last_updated_snapshot
+        };
+      });
+  }
+
+  getDailyLlmSpendUsd(profileKey: ProfileKey, sinceIso: string): number {
+    const row = this.db
+      .prepare<unknown[], { total_cost: number | null }>(
+        `SELECT COALESCE(SUM(estimated_cost_usd), 0) AS total_cost
+         FROM llm_runs
+         WHERE profile_key = ?
+           AND completed_at >= ?
+           AND status IN ('ok', 'partial')`
+      )
+      .get(profileKey, sinceIso);
+
+    return row?.total_cost ?? 0;
+  }
+
   saveDigest(profileKey: ProfileKey, result: DigestBuildResult, generatedAt: string): SavedDigestRecord {
     const inserted = this.db
       .prepare(
@@ -870,8 +968,24 @@ export class NewsDatabase {
 
     const digestId = Number(inserted.lastInsertRowid);
     const sentStatement = this.db.prepare(
-      `INSERT INTO sent_items (profile_key, digest_id, item_id, slot, sent_at, send_reason)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO sent_items (
+        profile_key,
+        digest_id,
+        item_id,
+        slot,
+        sent_at,
+        send_reason,
+        section_key,
+        canonical_identity_hash,
+        story_cluster_hash,
+        title_snapshot,
+        url_snapshot,
+        suppression_basis_json,
+        override_reason,
+        content_source_hash,
+        last_updated_snapshot
+      )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
     const followupStatement = this.db.prepare(
       `INSERT INTO followup_context (profile_key, digest_id, item_number, item_id, created_at, context_json)
@@ -880,7 +994,34 @@ export class NewsDatabase {
 
     const transaction = this.db.transaction((items: DigestEntry[]) => {
       items.forEach((item, index) => {
-        sentStatement.run(profileKey, digestId, item.itemId, index + 1, generatedAt, item.sectionKey);
+        const fingerprint = buildSuppressionFingerprintFromEntry(item);
+        const articleContextMeta = asObject(item.metadata["articleContext"]);
+        const suppressionMeta = asObject(item.metadata["suppression"]);
+        sentStatement.run(
+          profileKey,
+          digestId,
+          item.itemId,
+          index + 1,
+          generatedAt,
+          item.sectionKey,
+          item.sectionKey,
+          fingerprint.canonicalIdentityHash,
+          fingerprint.storyClusterHash,
+          item.title,
+          item.primaryUrl,
+          JSON.stringify({
+            sourceType: item.sourceType,
+            itemKind: item.itemKind,
+            repoKey: fingerprint.repoKey ?? null,
+            matchedKeywords: item.keywords,
+            score: item.score,
+            suppressionReason: suppressionMeta.reason ?? null,
+            overrideReason: suppressionMeta.overrideReason ?? null
+          }),
+          typeof suppressionMeta.overrideReason === "string" ? suppressionMeta.overrideReason : null,
+          typeof articleContextMeta.sourceHash === "string" ? articleContextMeta.sourceHash : null,
+          typeof item.metadata["lastUpdatedAt"] === "string" ? item.metadata["lastUpdatedAt"] : null
+        );
         followupStatement.run(profileKey, digestId, item.number, item.itemId, generatedAt, JSON.stringify(item));
       });
     });
@@ -1114,6 +1255,9 @@ export class NewsDatabase {
   startLlmRun(input: {
     profileKey: ProfileKey;
     runType: LlmRunType;
+    taskKey?: LlmTaskKey;
+    taskTier?: LlmTaskTier;
+    provider?: LlmProvider;
     modelName: string;
     promptVersion: string;
     inputHash: string;
@@ -1121,10 +1265,31 @@ export class NewsDatabase {
   }): number {
     const result = this.db
       .prepare(
-        `INSERT INTO llm_runs (profile_key, run_type, model_name, prompt_version, input_hash, started_at, status)
-         VALUES (?, ?, ?, ?, ?, ?, 'running')`
+        `INSERT INTO llm_runs (
+          profile_key,
+          run_type,
+          task_key,
+          task_tier,
+          provider,
+          model_name,
+          prompt_version,
+          input_hash,
+          started_at,
+          status
+        )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'running')`
       )
-      .run(input.profileKey, input.runType, input.modelName, input.promptVersion, input.inputHash, input.startedAt);
+      .run(
+        input.profileKey,
+        input.runType,
+        input.taskKey ?? null,
+        input.taskTier ?? null,
+        input.provider ?? null,
+        input.modelName,
+        input.promptVersion,
+        input.inputHash,
+        input.startedAt
+      );
 
     return Number(result.lastInsertRowid);
   }
@@ -1135,12 +1300,13 @@ export class NewsDatabase {
     completedAt: string;
     latencyMs?: number | null;
     tokenUsage?: Record<string, unknown> | null;
+    estimatedCostUsd?: number | null;
     errorText?: string | null;
   }): void {
     this.db
       .prepare(
         `UPDATE llm_runs
-         SET completed_at = ?, status = ?, latency_ms = ?, token_usage_json = ?, error_text = ?
+         SET completed_at = ?, status = ?, latency_ms = ?, token_usage_json = ?, estimated_cost_usd = ?, error_text = ?
          WHERE id = ?`
       )
       .run(
@@ -1148,6 +1314,7 @@ export class NewsDatabase {
         input.status,
         input.latencyMs ?? null,
         input.tokenUsage ? JSON.stringify(input.tokenUsage) : null,
+        input.estimatedCostUsd ?? null,
         input.errorText ?? null,
         input.runId
       );
@@ -1835,8 +2002,8 @@ function sqlToBoolean(value?: number | null): boolean | null {
   return value === 1;
 }
 
-function coalesceBoolean(incoming: boolean | null, existing: boolean | null): boolean | null {
-  return incoming == null ? existing : incoming;
+function coalesceBoolean(incoming?: boolean | null, existing?: boolean | null): boolean | null {
+  return incoming == null ? existing ?? null : incoming;
 }
 
 interface ExistingItemRow {
@@ -1874,6 +2041,23 @@ interface ExistingItemRow {
 interface CandidateItemRow extends ExistingItemRow {
   last_sent_at?: string | null;
   cross_signal_count: number;
+}
+
+interface RecentSentItemRow {
+  item_id: number;
+  sent_at: string;
+  section_key?: string | null;
+  canonical_identity_hash?: string | null;
+  story_cluster_hash?: string | null;
+  title_snapshot?: string | null;
+  url_snapshot?: string | null;
+  content_source_hash?: string | null;
+  last_updated_snapshot?: string | null;
+  normalized_title?: string | null;
+  title_hash?: string | null;
+  repo_owner?: string | null;
+  repo_name?: string | null;
+  source_type: string;
 }
 
 interface ItemSourceRow {
@@ -2038,4 +2222,8 @@ interface SignalMatchRow extends SignalEventRow {
   item_id: number;
   match_type: string;
   boost_score: number;
+}
+
+function asObject(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value != null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }

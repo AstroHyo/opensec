@@ -47,9 +47,10 @@ Sources
   -> signal matching
   -> SQLite state
   -> profile-aware deterministic scoring
+  -> recent 72h suppression gate
   -> candidate shortlist
   -> bounded article / repo full-read
-  -> structured insight enrichment
+  -> task-tiered structured insight enrichment
   -> bounded rerank delta
   -> digest builder
   -> Telegram-oriented renderer
@@ -63,20 +64,67 @@ The `tech` profile no longer treats LLMs as one-line summary writers.
 The current intended flow is:
 
 1. deterministic retrieval and ranking
-2. bounded shortlist selection
-3. article or repo context extraction for only the shortlisted items
-4. structured insight enrichment with schema validation
-5. bounded rerank delta using novelty, insight, and evidence depth
-6. Telegram rendering with perspective-specific fields
-7. follow-up answers from saved article context plus saved enrichment
+2. strong recent 72h suppression before section assembly
+3. bounded shortlist selection
+4. article or repo context extraction for only the shortlisted items
+5. structured insight enrichment with schema validation
+6. bounded rerank delta using novelty, insight, and evidence depth
+7. Telegram rendering with perspective-specific fields
+8. follow-up answers from saved article context plus saved enrichment
 
 Rules:
 
 - deterministic ranking remains the primary gate
+- recent sent-item suppression is DB-first, not renderer-first
 - LLMs never free-search for daily digest candidates
 - article text is treated as untrusted input
 - extraction failure degrades to snippet-based fallback instead of failing the digest
 - the main brief should be fewer and deeper rather than longer and flatter
+
+### Recent suppression layer
+
+The digest now enforces a strong 72-hour visibility window before final section assembly.
+
+Hard-block matches include:
+
+- same canonical story identity
+- same repo identity
+- same official OpenAI page
+- high-similarity title cluster
+
+Resend override is intentionally narrow:
+
+- only materially updated official OpenAI items may surface inside 72 hours
+- the override reason is stored in `sent_items`
+
+### Task-tiered LLM routing
+
+LLM calls now route through a central task router rather than choosing models ad hoc at each call site.
+
+Default mapping:
+
+- Tier 0:
+  - deterministic only
+- Tier 1:
+  - `xai:grok-4-1-fast-reasoning`
+  - item enrichment
+  - AM theme synthesis
+  - short follow-up answers
+- Tier 2:
+  - `openai:gpt-4.1`
+  - PM theme synthesis
+  - multi-item synthesis
+- Tier 3:
+  - `openai:gpt-5.4-mini`
+  - explicit research only
+
+The router also applies:
+
+- provider key availability checks
+- per-tier timeouts
+- max allowed tier limits
+- optional daily budget controls
+- provider/tier/cost telemetry in `llm_runs`
 
 ### Evidence layer
 

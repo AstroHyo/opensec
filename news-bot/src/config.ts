@@ -13,6 +13,7 @@ const envSchema = z.object({
   NEWS_BOT_TELEGRAM_USER_ID: z.string().optional(),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
+  XAI_API_KEY: z.string().optional(),
   NEWS_BOT_LLM_ENABLED: z
     .string()
     .optional()
@@ -25,12 +26,24 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((value) => value === "1" || value === "true"),
-  NEWS_BOT_LLM_MODEL_SUMMARY: z.string().default("gpt-4.1-mini"),
-  NEWS_BOT_LLM_MODEL_THEMES: z.string().default("gpt-4.1"),
-  NEWS_BOT_LLM_MODEL_RESEARCH: z.string().default("gpt-5.4-mini"),
+  NEWS_BOT_LLM_MODEL_TIER_SMALL: z.string().default("xai:grok-4-1-fast-reasoning"),
+  NEWS_BOT_LLM_MODEL_TIER_MEDIUM: z.string().default("openai:gpt-4.1"),
+  NEWS_BOT_LLM_MODEL_TIER_DEEP: z.string().default("openai:gpt-5.4-mini"),
   NEWS_BOT_LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
+  NEWS_BOT_LLM_TIMEOUT_TIER_SMALL_MS: z.coerce.number().int().positive().default(20_000),
+  NEWS_BOT_LLM_TIMEOUT_TIER_MEDIUM_MS: z.coerce.number().int().positive().default(30_000),
+  NEWS_BOT_LLM_TIMEOUT_TIER_DEEP_MS: z.coerce.number().int().positive().default(60_000),
   NEWS_BOT_LLM_MAX_ITEMS_AM: z.coerce.number().int().positive().default(12),
   NEWS_BOT_LLM_MAX_ITEMS_PM: z.coerce.number().int().positive().default(20),
+  NEWS_BOT_LLM_MAX_ALLOWED_TIER: z.coerce.number().int().min(0).max(3).default(3),
+  NEWS_BOT_LLM_DAILY_BUDGET_USD: z
+    .union([z.string().length(0), z.coerce.number().positive()])
+    .optional()
+    .transform((value) => (typeof value === "number" ? value : undefined)),
+  NEWS_BOT_LLM_BUDGET_HARD_STOP: z
+    .string()
+    .optional()
+    .transform((value) => value === "1" || value === "true"),
   NEWS_BOT_BLUESKY_ENABLED: z
     .string()
     .optional()
@@ -51,16 +64,23 @@ export interface AppConfig {
   telegramUserId?: string;
   telegramBotToken?: string;
   openAiApiKey?: string;
+  xAiApiKey?: string;
   llm: {
     enabled: boolean;
     themesEnabled: boolean;
     rerankEnabled: boolean;
-    summaryModel: string;
-    themesModel: string;
-    researchModel: string;
+    modelTierSmall: string;
+    modelTierMedium: string;
+    modelTierDeep: string;
     timeoutMs: number;
+    timeoutTierSmallMs: number;
+    timeoutTierMediumMs: number;
+    timeoutTierDeepMs: number;
     maxItemsAm: number;
     maxItemsPm: number;
+    maxAllowedTier: 0 | 1 | 2 | 3;
+    dailyBudgetUsd?: number;
+    budgetHardStop: boolean;
   };
   sourcing: {
     blueskyEnabled: boolean;
@@ -100,16 +120,23 @@ export function loadConfig(cwd = process.cwd()): AppConfig {
     telegramUserId: env.NEWS_BOT_TELEGRAM_USER_ID,
     telegramBotToken: env.TELEGRAM_BOT_TOKEN,
     openAiApiKey: env.OPENAI_API_KEY,
+    xAiApiKey: env.XAI_API_KEY,
     llm: {
-      enabled: Boolean(env.OPENAI_API_KEY && env.NEWS_BOT_LLM_ENABLED),
-      themesEnabled: Boolean(env.OPENAI_API_KEY && env.NEWS_BOT_LLM_THEMES_ENABLED),
-      rerankEnabled: Boolean(env.OPENAI_API_KEY && env.NEWS_BOT_LLM_RERANK_ENABLED),
-      summaryModel: env.NEWS_BOT_LLM_MODEL_SUMMARY,
-      themesModel: env.NEWS_BOT_LLM_MODEL_THEMES,
-      researchModel: env.NEWS_BOT_LLM_MODEL_RESEARCH,
+      enabled: Boolean((env.OPENAI_API_KEY || env.XAI_API_KEY) && env.NEWS_BOT_LLM_ENABLED),
+      themesEnabled: Boolean((env.OPENAI_API_KEY || env.XAI_API_KEY) && env.NEWS_BOT_LLM_THEMES_ENABLED),
+      rerankEnabled: Boolean((env.OPENAI_API_KEY || env.XAI_API_KEY) && env.NEWS_BOT_LLM_RERANK_ENABLED),
+      modelTierSmall: env.NEWS_BOT_LLM_MODEL_TIER_SMALL,
+      modelTierMedium: env.NEWS_BOT_LLM_MODEL_TIER_MEDIUM,
+      modelTierDeep: env.NEWS_BOT_LLM_MODEL_TIER_DEEP,
       timeoutMs: env.NEWS_BOT_LLM_TIMEOUT_MS,
+      timeoutTierSmallMs: env.NEWS_BOT_LLM_TIMEOUT_TIER_SMALL_MS,
+      timeoutTierMediumMs: env.NEWS_BOT_LLM_TIMEOUT_TIER_MEDIUM_MS,
+      timeoutTierDeepMs: env.NEWS_BOT_LLM_TIMEOUT_TIER_DEEP_MS,
       maxItemsAm: env.NEWS_BOT_LLM_MAX_ITEMS_AM,
-      maxItemsPm: env.NEWS_BOT_LLM_MAX_ITEMS_PM
+      maxItemsPm: env.NEWS_BOT_LLM_MAX_ITEMS_PM,
+      maxAllowedTier: env.NEWS_BOT_LLM_MAX_ALLOWED_TIER as 0 | 1 | 2 | 3,
+      dailyBudgetUsd: env.NEWS_BOT_LLM_DAILY_BUDGET_USD,
+      budgetHardStop: Boolean(env.NEWS_BOT_LLM_BUDGET_HARD_STOP)
     },
     sourcing: {
       blueskyEnabled: Boolean(env.NEWS_BOT_BLUESKY_ENABLED),

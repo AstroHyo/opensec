@@ -1,14 +1,27 @@
 import { z } from "zod";
+import type { LlmProvider } from "../types.js";
 import { collapseWhitespace } from "../util/text.js";
 
 interface StructuredJsonRequest<T> {
+  apiKey: string;
+  model: string;
+  provider?: LlmProvider;
+  schemaName: string;
+  schema: Record<string, unknown>;
+  validator: z.ZodType<T>;
+  systemPrompt: string;
+  userPrompt: string;
+  timeoutMs: number;
+}
+
+interface ResponsesInputJsonRequest<T> {
   apiKey: string;
   model: string;
   schemaName: string;
   schema: Record<string, unknown>;
   validator: z.ZodType<T>;
   systemPrompt: string;
-  userPrompt: string;
+  inputItems: Array<{ type: "text"; text: string } | { type: "image"; imageUrl: string }>;
   timeoutMs: number;
 }
 
@@ -24,9 +37,10 @@ export interface StructuredJsonResponseWithAnnotations<T> extends StructuredJson
 export async function generateStructuredJson<T>(input: StructuredJsonRequest<T>): Promise<StructuredJsonResponse<T>> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), input.timeoutMs);
+  const provider = input.provider ?? "openai";
 
   try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch(resolveChatCompletionsUrl(provider), {
       method: "POST",
       signal: controller.signal,
       headers: {
@@ -52,7 +66,7 @@ export async function generateStructuredJson<T>(input: StructuredJsonRequest<T>)
     });
 
     if (!response.ok) {
-      throw new Error(`OpenAI request failed: ${response.status} ${await response.text()}`);
+      throw new Error(`${provider} request failed: ${response.status} ${await response.text()}`);
     }
 
     const payload = (await response.json()) as {
@@ -67,16 +81,16 @@ export async function generateStructuredJson<T>(input: StructuredJsonRequest<T>)
 
     const choice = payload.choices?.[0];
     if (!choice?.message) {
-      throw new Error("OpenAI response did not contain a message");
+      throw new Error(`${provider} response did not contain a message`);
     }
 
     if (choice.message.refusal) {
-      throw new Error(`OpenAI refused the request: ${choice.message.refusal}`);
+      throw new Error(`${provider} refused the request: ${choice.message.refusal}`);
     }
 
     const content = extractContent(choice.message.content);
     if (!content) {
-      throw new Error("OpenAI response did not contain structured JSON text");
+      throw new Error(`${provider} response did not contain structured JSON text`);
     }
 
     const parsed = input.validator.parse(JSON.parse(content));
@@ -155,6 +169,77 @@ export async function generateStructuredJsonWithWebSearch<T>(
   } finally {
     clearTimeout(timeout);
   }
+}
+
+export async function generateStructuredJsonWithResponsesInput<T>(
+  input: ResponsesInputJsonRequest<T>
+): Promise<StructuredJsonResponse<T>> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), input.timeoutMs);
+
+  try {
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${input.apiKey}`
+      },
+      body: JSON.stringify({
+        model: input.model,
+        instructions: input.systemPrompt,
+        input: input.inputItems.map((item) =>
+          item.type === "text" ? { role: "user", content: [{ type: "input_text", text: item.text }] } : { role: "user", content: [{ type: "input_image", image_url: item.imageUrl }] }
+        ),
+        text: {
+          format: {
+            type: "json_schema",
+            name: input.schemaName,
+            strict: true,
+            schema: input.schema
+          }
+        },
+        store: false
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`OpenAI Responses request failed: ${response.status} ${await response.text()}`);
+    }
+
+    const payload = (await response.json()) as {
+      output_text?: string;
+      output?: Array<{
+        content?: Array<{ type?: string; text?: string }>;
+      }>;
+      usage?: Record<string, unknown>;
+      error?: { message?: string };
+    };
+
+    if (payload.error?.message) {
+      throw new Error(payload.error.message);
+    }
+
+    const content = extractResponsesContent(payload);
+    if (!content.text) {
+      throw new Error("OpenAI Responses API did not return structured JSON text");
+    }
+
+    const parsed = input.validator.parse(JSON.parse(content.text));
+    return {
+      data: parsed,
+      usage: payload.usage ?? null
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function resolveChatCompletionsUrl(provider: LlmProvider): string {
+  if (provider === "xai") {
+    return "https://api.x.ai/v1/chat/completions";
+  }
+  return "https://api.openai.com/v1/chat/completions";
 }
 
 function extractContent(content?: string | Array<{ type?: string; text?: string }>): string {

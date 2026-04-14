@@ -283,11 +283,22 @@ export interface SavedDigestRecord {
 }
 
 export type LlmRunType = "item_enrichment" | "theme_synthesis" | "followup_answer" | "followup_research";
+export type LlmProvider = "openai" | "xai";
+export type LlmTaskTier = 0 | 1 | 2 | 3;
+export type LlmTaskKey =
+  | "item_enrichment"
+  | "theme_synthesis_am"
+  | "theme_synthesis_pm"
+  | "followup_answer"
+  | "followup_research";
 
 export interface LlmRunRecord {
   id: number;
   profileKey: ProfileKey;
   runType: LlmRunType;
+  taskKey?: LlmTaskKey | null;
+  taskTier?: LlmTaskTier | null;
+  provider?: LlmProvider | null;
   modelName: string;
   promptVersion: string;
   inputHash: string;
@@ -296,6 +307,7 @@ export interface LlmRunRecord {
   status: "running" | "ok" | "partial" | "error";
   latencyMs?: number | null;
   tokenUsage?: Record<string, unknown> | null;
+  estimatedCostUsd?: number | null;
   errorText?: string | null;
 }
 

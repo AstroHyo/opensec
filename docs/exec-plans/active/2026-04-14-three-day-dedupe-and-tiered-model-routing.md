@@ -50,6 +50,23 @@ fetch + normalize + dedupe
 -> final render
 ```
 
+## Implemented defaults
+
+Current default tier mapping for implementation:
+
+- Tier 1:
+  - `xai:grok-4-1-fast-reasoning`
+- Tier 2:
+  - `openai:gpt-4.1`
+- Tier 3:
+  - `openai:gpt-5.4-mini`
+
+Current budget behavior:
+
+- Tier 1 can continue after the soft daily budget threshold unless `NEWS_BOT_LLM_BUDGET_HARD_STOP=true`
+- Tier 2 and Tier 3 stop once the soft daily budget threshold is reached
+- all tiers stop when the hard-stop flag is enabled and the threshold is reached
+
 ## Workstream A: Strong 72-hour duplicate suppression
 
 ### Goal

@@ -3,6 +3,7 @@ import type { AppConfig } from "../config.js";
 import { NewsDatabase } from "../db.js";
 import { generateStructuredJson } from "../llm/openaiClient.js";
 import { buildFollowupAnswerPrompts } from "../llm/promptTemplates.js";
+import { estimateLlmCostUsd, routeLlmTask } from "../llm/taskRouter.js";
 import {
   ASK_FOLLOWUP_PROMPT_VERSION,
   askFollowupJsonSchema,
@@ -76,8 +77,15 @@ async function maybeAnswerWithLlm(input: {
   profileKey: ProfileKey;
   now: DateTime;
 }): Promise<{ answer: string; bullets: string[]; usedNumbers: number[]; uncertaintyNotes: string[] } | null> {
-  const apiKey = input.config.openAiApiKey;
-  if (!input.config.llm.enabled || !apiKey) {
+  const route = routeLlmTask({
+    config: input.config,
+    taskKey: "followup_answer",
+    spentTodayUsd: input.db.getDailyLlmSpendUsd(
+      input.profileKey,
+      input.now.startOf("day").toUTC().toISO() ?? startedIso(input.now)
+    )
+  });
+  if (!route.enabled || !route.apiKey) {
     return null;
   }
 
@@ -97,8 +105,11 @@ async function maybeAnswerWithLlm(input: {
   );
   const runId = input.db.startLlmRun({
     profileKey: input.profileKey,
-    runType: "followup_answer",
-    modelName: input.config.llm.summaryModel,
+    runType: route.runType,
+    taskKey: route.taskKey,
+    taskTier: route.tier,
+    provider: route.provider,
+    modelName: route.model,
     promptVersion: ASK_FOLLOWUP_PROMPT_VERSION,
     inputHash,
     startedAt
@@ -106,14 +117,15 @@ async function maybeAnswerWithLlm(input: {
 
   try {
     const response = await generateStructuredJson({
-      apiKey,
-      model: input.config.llm.summaryModel,
+      apiKey: route.apiKey,
+      provider: route.provider,
+      model: route.model,
       schemaName: "followup_answer",
       schema: askFollowupJsonSchema,
       validator: askFollowupSchema,
       systemPrompt: prompts.systemPrompt,
       userPrompt: prompts.userPrompt,
-      timeoutMs: input.config.llm.timeoutMs
+      timeoutMs: route.timeoutMs
     });
 
     input.db.finishLlmRun({
@@ -121,7 +133,12 @@ async function maybeAnswerWithLlm(input: {
       status: "ok",
       completedAt: input.now.toUTC().toISO() ?? new Date().toISOString(),
       latencyMs: Date.now() - startedMillis,
-      tokenUsage: response.usage ?? null
+      tokenUsage: response.usage ?? null,
+      estimatedCostUsd: estimateLlmCostUsd({
+        provider: route.provider,
+        model: route.model,
+        usage: response.usage ?? null
+      })
     });
 
     const allowedNumbers = new Set(input.selectedItems.map((item) => item.number));
@@ -143,6 +160,10 @@ async function maybeAnswerWithLlm(input: {
     });
     return null;
   }
+}
+
+function startedIso(now: DateTime): string {
+  return now.toUTC().toISO() ?? new Date().toISOString();
 }
 
 function renderAskAnswer(input: {

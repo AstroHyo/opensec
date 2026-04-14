@@ -96,11 +96,21 @@ Stores each rendered digest snapshot.
 Tracks which normalized items were included in which digest and when.
 
 - `profile_key`
+- `section_key`
+- `canonical_identity_hash`
+- `story_cluster_hash`
+- `title_snapshot`
+- `url_snapshot`
+- `suppression_basis_json`
+- `override_reason`
+- `content_source_hash`
+- `last_updated_snapshot`
 
 Purpose:
 
-- resend suppression
+- strong 72-hour resend suppression
 - section-slot history
+- explainable resend override tracking
 
 ### `followup_context`
 
@@ -134,13 +144,23 @@ Stores optional LLM execution metadata.
 
 - `profile_key`
 - `run_type`
+- `task_key`
+- `task_tier`
+- `provider`
 - `model_name`
 - `prompt_version`
 - `input_hash`
 - `status`
 - `latency_ms`
 - `token_usage_json`
+- `estimated_cost_usd`
 - `error_text`
+
+Purpose:
+
+- provider-aware routing telemetry
+- cost tracking by task class
+- future budget controls
 
 ### `item_enrichments`
 

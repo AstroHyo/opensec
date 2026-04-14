@@ -13,6 +13,11 @@ import type {
   ScoreBreakdown
 } from "../types.js";
 import { resolveDigestWindow } from "../util/timeWindow.js";
+import {
+  buildSuppressionFingerprint,
+  findRecentSuppressionMatch,
+  type RecentSentIdentity
+} from "../util/suppression.js";
 import { collapseWhitespace, truncate } from "../util/text.js";
 import { renderTelegramDigest } from "./renderTelegram.js";
 
@@ -27,6 +32,8 @@ interface BuildDigestParams {
 interface ScoredItem {
   item: NormalizedItemRecord;
   score: ScoreBreakdown;
+  suppressionReason?: string;
+  suppressionOverrideReason?: string;
 }
 
 export function buildDigest({ db, config, profileKey, mode, now }: BuildDigestParams): DigestBuildResult {
@@ -61,10 +68,17 @@ export function buildDigest({ db, config, profileKey, mode, now }: BuildDigestPa
     .filter((entry) => isNotFuture(entry, windowEnd))
     .filter((entry) => includeItem(entry, mode, profileKey))
     .sort(sortScoredItems);
+  const dedupedScored = applyStrongRecentSuppression({
+    db,
+    profileKey,
+    mode,
+    now: now.toUTC(),
+    scored
+  });
 
   const emptyHeader = profile.briefTitles[mode];
 
-  if (scored.length === 0) {
+  if (dedupedScored.length === 0) {
     const header = `[${emptyHeader} | ${window.dateLabel} ET]`;
     return {
       profileKey,
@@ -84,21 +98,23 @@ export function buildDigest({ db, config, profileKey, mode, now }: BuildDigestPa
       bodyText: `${header}\n\n1) 오늘은 억지로 채우지 않음\n- 고신호로 볼 만한 새 항목이 부족해 low-quality filler 없이 건너뜁니다.`,
       stats: {
         candidateCount: candidates.length,
-        includedCount: 0
+        includedCount: 0,
+        recentSuppressionWindowHours: 72,
+        suppressedRecentDuplicates: scored.length
       }
     };
   }
 
   const candidateEntries =
-    profileKey === "tech" ? buildCandidateEntries(scored, mode, profileKey, config) : undefined;
+    profileKey === "tech" ? buildCandidateEntries(dedupedScored, mode, profileKey, config) : undefined;
 
   const sections =
     profileKey === "finance"
       ? mode === "am"
-        ? buildFinanceAmSections(scored)
+        ? buildFinanceAmSections(dedupedScored)
         : mode === "pm"
-          ? buildFinancePmSections(scored)
-          : buildManualSections(scored, profileKey)
+          ? buildFinancePmSections(dedupedScored)
+          : buildManualSections(dedupedScored, profileKey)
       : buildTechSectionsFromEntries(candidateEntries ?? [], mode);
   assignNumbers(sections);
   const items = sections.flatMap((section) => section.items);
@@ -118,7 +134,9 @@ export function buildDigest({ db, config, profileKey, mode, now }: BuildDigestPa
       bodyText: "",
       stats: {
         candidateCount: candidates.length,
-        includedCount: items.length
+        includedCount: items.length,
+        recentSuppressionWindowHours: 72,
+        suppressedRecentDuplicates: scored.length - dedupedScored.length
     }
   };
 
@@ -186,6 +204,74 @@ function sortScoredItems(left: ScoredItem, right: ScoredItem): number {
   const rightTime = DateTime.fromISO(right.item.publishedAt ?? right.item.lastSeenAt, { zone: "utc" }).toMillis();
   const leftTime = DateTime.fromISO(left.item.publishedAt ?? left.item.lastSeenAt, { zone: "utc" }).toMillis();
   return rightTime - leftTime;
+}
+
+function applyStrongRecentSuppression(input: {
+  db: NewsDatabase;
+  profileKey: ProfileKey;
+  mode: DigestMode;
+  now: DateTime;
+  scored: ScoredItem[];
+}): ScoredItem[] {
+  const selected: ScoredItem[] = [];
+  const currentDigestFingerprints: RecentSentIdentity[] = [];
+  const recentSent =
+    input.mode === "manual"
+      ? []
+      : input.db.listRecentSentItems(input.profileKey, input.now.minus({ hours: 72 }).toISO() ?? input.now.toISO() ?? "");
+
+  for (const entry of input.scored) {
+    const fingerprint = buildSuppressionFingerprint(entry.item);
+    if (findRecentSuppressionMatch(fingerprint, currentDigestFingerprints)) {
+      continue;
+    }
+
+    const recentMatch = findRecentSuppressionMatch(fingerprint, recentSent);
+    if (recentMatch) {
+      const overrideReason = maybeAllowRecentResend(entry.item, recentMatch.match);
+      if (!overrideReason) {
+        continue;
+      }
+      entry.suppressionReason = recentMatch.reason;
+      entry.suppressionOverrideReason = overrideReason;
+    }
+
+    selected.push(entry);
+    currentDigestFingerprints.push({
+      itemId: entry.item.id,
+      sentAt: input.now.toISO() ?? new Date().toISOString(),
+      sectionKey: null,
+      canonicalIdentityHash: fingerprint.canonicalIdentityHash,
+      storyClusterHash: fingerprint.storyClusterHash,
+      titleSnapshot: fingerprint.titleSnapshot,
+      urlSnapshot: fingerprint.urlSnapshot,
+      repoKey: fingerprint.repoKey,
+      normalizedTitle: fingerprint.normalizedTitle,
+      titleHash: fingerprint.titleHash ?? null,
+      sourceType: fingerprint.sourceType,
+      contentSourceHash: null,
+      lastUpdatedSnapshot: entry.item.lastUpdatedAt
+    });
+  }
+
+  return selected;
+}
+
+function maybeAllowRecentResend(item: NormalizedItemRecord, recent: RecentSentIdentity): string | null {
+  if (item.sourceType !== "openai_official") {
+    return null;
+  }
+
+  const itemUpdated = DateTime.fromISO(item.lastUpdatedAt, { zone: "utc" });
+  const previousUpdated = recent.lastUpdatedSnapshot
+    ? DateTime.fromISO(recent.lastUpdatedSnapshot, { zone: "utc" })
+    : DateTime.fromISO(recent.sentAt, { zone: "utc" });
+
+  if (itemUpdated.isValid && previousUpdated.isValid && itemUpdated.toMillis() > previousUpdated.toMillis()) {
+    return "official_openai_material_update";
+  }
+
+  return null;
 }
 
 export function buildTechSectionsFromEntries(entries: DigestEntry[], mode: DigestMode): DigestSection[] {
@@ -410,7 +496,17 @@ function toDigestEntry(entry: ScoredItem, sectionKey: string, profileKey: Profil
     repoStarsTotal: entry.item.repoStarsTotal,
     keywords: entry.score.matchedKeywords,
     description: entry.item.description,
-    metadata: entry.item.metadata
+    metadata: {
+      ...entry.item.metadata,
+      lastUpdatedAt: entry.item.lastUpdatedAt,
+      suppression:
+        entry.suppressionReason || entry.suppressionOverrideReason
+          ? {
+              reason: entry.suppressionReason ?? null,
+              overrideReason: entry.suppressionOverrideReason ?? null
+            }
+          : undefined
+    }
   };
 }
 

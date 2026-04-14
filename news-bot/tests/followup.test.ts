@@ -11,6 +11,7 @@ describe("follow-up natural language routing", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     delete process.env.OPENAI_API_KEY;
+    delete process.env.XAI_API_KEY;
     delete process.env.NEWS_BOT_LLM_ENABLED;
   });
 
@@ -43,6 +44,7 @@ describe("follow-up natural language routing", () => {
   it("uses the LLM for explicit ask mode when configured", async () => {
     const dbPath = await seedDigest();
     process.env.OPENAI_API_KEY = "test-key";
+    process.env.XAI_API_KEY = "test-key";
     process.env.NEWS_BOT_LLM_ENABLED = "true";
 
     vi.stubGlobal(

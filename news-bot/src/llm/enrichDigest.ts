@@ -14,6 +14,7 @@ import { collapseWhitespace, truncate } from "../util/text.js";
 import { renderTelegramDigest } from "../digest/renderTelegram.js";
 import { generateStructuredJson } from "./openaiClient.js";
 import { buildItemEnrichmentPrompts, buildThemeSynthesisPrompts } from "./promptTemplates.js";
+import { estimateLlmCostUsd, routeLlmTask } from "./taskRouter.js";
 import {
   digestThemeJsonSchema,
   digestThemeSchema,
@@ -29,8 +30,7 @@ export async function maybeEnrichDigest(input: {
   digest: DigestBuildResult;
   now: DateTime;
 }): Promise<void> {
-  const apiKey = input.config.openAiApiKey;
-  if (!input.config.llm.enabled || !apiKey) {
+  if (!input.config.llm.enabled) {
     return;
   }
 
@@ -41,7 +41,7 @@ export async function maybeEnrichDigest(input: {
       : input.digest.items.slice(0, maxItems);
 
   if (targetItems.length > 0) {
-    await enrichItems(input.db, input.config, apiKey, targetItems, input.digest.mode, input.now);
+    await enrichItems(input.db, input.config, targetItems, input.digest.mode, input.now);
   }
 
   if (input.digest.profileKey === "tech" && targetItems.length > 0) {
@@ -49,7 +49,7 @@ export async function maybeEnrichDigest(input: {
   }
 
   if (input.config.llm.themesEnabled && input.digest.items.length > 0) {
-    await enrichThemes(input.db, input.config, apiKey, input.digest, input.now);
+    await enrichThemes(input.db, input.config, input.digest, input.now);
   }
 
   input.digest.bodyText = renderTelegramDigest(input.digest);
@@ -58,11 +58,19 @@ export async function maybeEnrichDigest(input: {
 async function enrichItems(
   db: NewsDatabase,
   config: AppConfig,
-  apiKey: string,
   items: DigestEntry[],
   mode: DigestBuildResult["mode"],
   now: DateTime
 ): Promise<void> {
+  const route = routeLlmTask({
+    config,
+    taskKey: "item_enrichment",
+    spentTodayUsd: db.getDailyLlmSpendUsd(items[0]?.profileKey ?? "tech", now.startOf("day").toUTC().toISO() ?? startedIso(now))
+  });
+  if (!route.enabled || !route.apiKey) {
+    return;
+  }
+
   const contexts = await ensureArticleContexts({
     db,
     config,
@@ -99,8 +107,11 @@ async function enrichItems(
   const startedMillis = Date.now();
   const runId = db.startLlmRun({
     profileKey: items[0]?.profileKey ?? "tech",
-    runType: "item_enrichment",
-    modelName: config.llm.summaryModel,
+    runType: route.runType,
+    taskKey: route.taskKey,
+    taskTier: route.tier,
+    provider: route.provider,
+    modelName: route.model,
     promptVersion: ITEM_ENRICHMENT_PROMPT_VERSION,
     inputHash,
     startedAt
@@ -109,14 +120,15 @@ async function enrichItems(
   try {
     const prompts = buildItemEnrichmentPrompts({ mode, items: missing });
     const response = await generateStructuredJson({
-      apiKey,
-      model: config.llm.summaryModel,
+      apiKey: route.apiKey,
+      provider: route.provider,
+      model: route.model,
       schemaName: "item_enrichment_batch",
       schema: itemEnrichmentJsonSchema,
       validator: itemEnrichmentBatchSchema,
       systemPrompt: prompts.systemPrompt,
       userPrompt: prompts.userPrompt,
-      timeoutMs: config.llm.timeoutMs
+      timeoutMs: route.timeoutMs
     });
 
     const byId = new Map(response.data.items.map((item) => [item.item_id, item] as const));
@@ -165,6 +177,11 @@ async function enrichItems(
       completedAt: now.toUTC().toISO() ?? new Date().toISOString(),
       latencyMs: Date.now() - startedMillis,
       tokenUsage: response.usage ?? null,
+      estimatedCostUsd: estimateLlmCostUsd({
+        provider: route.provider,
+        model: route.model,
+        usage: response.usage ?? null
+      }),
       errorText: savedCount === missing.length ? null : `Only enriched ${savedCount}/${missing.length} items`
     });
   } catch (error) {
@@ -181,7 +198,6 @@ async function enrichItems(
 async function enrichThemes(
   db: NewsDatabase,
   config: AppConfig,
-  apiKey: string,
   digest: DigestBuildResult,
   now: DateTime
 ): Promise<void> {
@@ -195,10 +211,21 @@ async function enrichThemes(
 
   const startedAt = now.toUTC().toISO() ?? new Date().toISOString();
   const startedMillis = Date.now();
+  const route = routeLlmTask({
+    config,
+    taskKey: digest.mode === "pm" ? "theme_synthesis_pm" : "theme_synthesis_am",
+    spentTodayUsd: db.getDailyLlmSpendUsd(digest.profileKey, now.startOf("day").toUTC().toISO() ?? startedAt)
+  });
+  if (!route.enabled || !route.apiKey) {
+    return;
+  }
   const runId = db.startLlmRun({
     profileKey: digest.profileKey,
-    runType: "theme_synthesis",
-    modelName: config.llm.themesModel,
+    runType: route.runType,
+    taskKey: route.taskKey,
+    taskTier: route.tier,
+    provider: route.provider,
+    modelName: route.model,
     promptVersion: THEME_SYNTHESIS_PROMPT_VERSION,
     inputHash: digestCacheKey,
     startedAt
@@ -207,14 +234,15 @@ async function enrichThemes(
   try {
     const prompts = buildThemeSynthesisPrompts({ mode: digest.mode, items: digest.items });
     const response = await generateStructuredJson({
-      apiKey,
-      model: config.llm.themesModel,
+      apiKey: route.apiKey,
+      provider: route.provider,
+      model: route.model,
       schemaName: "digest_theme_synthesis",
       schema: digestThemeJsonSchema,
       validator: digestThemeSchema,
       systemPrompt: prompts.systemPrompt,
       userPrompt: prompts.userPrompt,
-      timeoutMs: config.llm.timeoutMs
+      timeoutMs: route.timeoutMs
     });
 
     const themes = response.data.themes_ko
@@ -242,6 +270,11 @@ async function enrichThemes(
       completedAt: now.toUTC().toISO() ?? new Date().toISOString(),
       latencyMs: Date.now() - startedMillis,
       tokenUsage: response.usage ?? null,
+      estimatedCostUsd: estimateLlmCostUsd({
+        provider: route.provider,
+        model: route.model,
+        usage: response.usage ?? null
+      }),
       errorText: themes.length > 0 ? null : "Model returned no usable theme bullets"
     });
   } catch (error) {
@@ -253,6 +286,10 @@ async function enrichThemes(
       errorText: error instanceof Error ? error.message : String(error)
     });
   }
+}
+
+function startedIso(now: DateTime): string {
+  return now.toUTC().toISO() ?? new Date().toISOString();
 }
 
 export function buildItemSourceHash(item: DigestEntry, articleContext?: ArticleContextRecord | null): string {
@@ -309,8 +346,7 @@ export function buildDigestThemeCacheKey(digest: DigestBuildResult): string {
 export function applyItemEnrichment(item: DigestEntry, enrichment: ItemEnrichmentRecord): void {
   item.summary = enrichment.whatChangedKo ?? enrichment.summaryKo;
   item.whyImportant =
-    enrichment.whyImportantKo ||
-    [enrichment.engineerRelevanceKo, enrichment.aiEcosystemKo].filter(Boolean).join(" ");
+    [enrichment.engineerRelevanceKo, enrichment.aiEcosystemKo].filter(Boolean).join(" ") || enrichment.whyImportantKo;
   item.whatChanged = enrichment.whatChangedKo ?? enrichment.summaryKo;
   item.engineerRelevance = enrichment.engineerRelevanceKo ?? item.engineerRelevance;
   item.aiEcosystem = enrichment.aiEcosystemKo ?? item.aiEcosystem;

@@ -180,15 +180,31 @@ Precision and signal sourcing:
 Optional LLM behavior:
 
 - `OPENAI_API_KEY`
+- `XAI_API_KEY`
 - `NEWS_BOT_LLM_ENABLED`
 - `NEWS_BOT_LLM_THEMES_ENABLED`
 - `NEWS_BOT_LLM_RERANK_ENABLED`
-- `NEWS_BOT_LLM_MODEL_SUMMARY`
-- `NEWS_BOT_LLM_MODEL_THEMES`
-- `NEWS_BOT_LLM_MODEL_RESEARCH`
+- `NEWS_BOT_LLM_MODEL_TIER_SMALL`
+- `NEWS_BOT_LLM_MODEL_TIER_MEDIUM`
+- `NEWS_BOT_LLM_MODEL_TIER_DEEP`
 - `NEWS_BOT_LLM_TIMEOUT_MS`
+- `NEWS_BOT_LLM_TIMEOUT_TIER_SMALL_MS`
+- `NEWS_BOT_LLM_TIMEOUT_TIER_MEDIUM_MS`
+- `NEWS_BOT_LLM_TIMEOUT_TIER_DEEP_MS`
 - `NEWS_BOT_LLM_MAX_ITEMS_AM`
 - `NEWS_BOT_LLM_MAX_ITEMS_PM`
+- `NEWS_BOT_LLM_MAX_ALLOWED_TIER`
+- `NEWS_BOT_LLM_DAILY_BUDGET_USD`
+- `NEWS_BOT_LLM_BUDGET_HARD_STOP`
+
+Current default tier routing:
+
+- Tier 1:
+  - `xai:grok-4-1-fast-reasoning`
+- Tier 2:
+  - `openai:gpt-4.1`
+- Tier 3:
+  - `openai:gpt-5.4-mini`
 
 Bluesky ships disabled by default, and the checked-in watchlist starts empty. Populate [`src/sources/blueskyWatchlist.ts`](./src/sources/blueskyWatchlist.ts) only when you want explicit early-warning actors.
 

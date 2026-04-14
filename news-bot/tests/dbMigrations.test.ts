@@ -163,6 +163,27 @@ describe("database migrations", () => {
       expect(enrichmentColumns).toContain("evidence_spans_json");
       expect(enrichmentColumns).toContain("novelty_score");
       expect(enrichmentColumns).toContain("insight_score");
+
+      const sentColumns = verificationDb
+        .prepare<unknown[], { name: string }>("PRAGMA table_info(sent_items)")
+        .all()
+        .map((column) => column.name);
+
+      expect(sentColumns).toContain("section_key");
+      expect(sentColumns).toContain("canonical_identity_hash");
+      expect(sentColumns).toContain("story_cluster_hash");
+      expect(sentColumns).toContain("suppression_basis_json");
+      expect(sentColumns).toContain("content_source_hash");
+
+      const llmColumns = verificationDb
+        .prepare<unknown[], { name: string }>("PRAGMA table_info(llm_runs)")
+        .all()
+        .map((column) => column.name);
+
+      expect(llmColumns).toContain("task_key");
+      expect(llmColumns).toContain("task_tier");
+      expect(llmColumns).toContain("provider");
+      expect(llmColumns).toContain("estimated_cost_usd");
     } finally {
       verificationDb.close();
     }

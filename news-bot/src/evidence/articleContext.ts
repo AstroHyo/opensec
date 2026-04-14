@@ -66,6 +66,8 @@ export function embedArticleContexts(items: DigestEntry[], contexts: Map<number,
 
     const metadata = { ...item.metadata };
     metadata.articleContext = {
+      sourceHash: articleContext.sourceHash,
+      canonicalUrl: articleContext.canonicalUrl,
       fetchStatus: articleContext.fetchStatus,
       publisher: articleContext.publisher ?? null,
       author: articleContext.author ?? null,
