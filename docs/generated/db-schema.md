@@ -113,6 +113,7 @@ Purpose:
 - `expand N`
 - `why important N`
 - `show sources for N`
+- reuse saved insight fields and evidence metadata without live refetch
 
 ### `source_runs`
 
@@ -143,19 +144,62 @@ Stores optional LLM execution metadata.
 
 ### `item_enrichments`
 
-Stores per-item LLM summary artifacts.
+Stores per-item LLM insight artifacts.
 
 - `profile_key`
 - `item_id`
 - `llm_run_id`
 - `prompt_version`
 - `source_hash`
-- `summary_ko`
-- `why_important_ko`
+- compatibility fields:
+  - `summary_ko`
+  - `why_important_ko`
+- v2 insight fields:
+  - `what_changed_ko`
+  - `engineer_relevance_ko`
+  - `ai_ecosystem_ko`
+  - `openai_angle_ko`
+  - `trend_signal_ko`
+  - `cause_effect_ko`
+  - `watchpoints_json`
+  - `evidence_spans_json`
+  - `novelty_score`
+  - `insight_score`
 - `confidence`
 - `uncertainty_notes_json`
 - `theme_tags_json`
 - `officialness_note`
+
+Purpose:
+
+- cache structured insight extraction per item
+- support bounded rerank deltas
+- support deeper follow-up rendering
+
+### `article_contexts`
+
+Stores bounded full-read context for shortlisted items.
+
+- `item_id`
+- `source_hash`
+- `canonical_url`
+- `fetch_status`
+- `publisher`
+- `author`
+- `published_at`
+- `headline`
+- `dek`
+- `clean_text`
+- `key_sections_json`
+- `evidence_snippets_json`
+- `word_count`
+- `fetched_at`
+
+Purpose:
+
+- preserve reusable evidence beyond feed snippets
+- let follow-ups use stored article or README context
+- keep enrichment cacheable by source hash
 
 ### `digest_enrichments`
 
@@ -198,6 +242,71 @@ Links early-warning signals onto existing normalized items.
 - `match_type`
 - `boost_score`
 - `created_at`
+
+### `housing_watch_runs`
+
+Stores each Xiaohongshu watcher execution.
+
+- `started_at`
+- `completed_at`
+- `status`
+- `queries_json`
+- `harvested_count`
+- `candidate_count`
+- `notified_count`
+- `error_text`
+- `stats_json`
+
+### `housing_watch_candidates`
+
+Stores deduplicated Xiaohongshu housing posts and their latest evaluation state.
+
+Important fields:
+
+- `note_id`
+- `note_url`
+- `search_queries_json`
+- `body_text`
+- `page_text`
+- `ocr_text`
+- `image_urls_json`
+- `hard_filter_decision`
+- `hard_filter_reasons_json`
+- `llm_prompt_version`
+- `llm_model_name`
+- `llm_input_hash`
+- `llm_output_json`
+- `decision`
+- `decision_reasons_json`
+- `unit_type`
+- `whole_unit`
+- `female_only`
+- `shared_space`
+- `roommate_only`
+- `availability_summary`
+- `commute_friendly`
+- `raw_payload_json`
+
+Purpose:
+
+- keep original note evidence
+- support dedupe across many search queries
+- preserve OCR / LLM artifacts for debugging
+- track `maybe -> match` promotion without resending duplicates
+
+### `housing_watch_notifications`
+
+Stores direct Discord DM delivery attempts for housing watcher alerts and maintenance notices.
+
+- `candidate_id`
+- `notification_type`
+- `delivery_key`
+- `destination_user_id`
+- `status`
+- `message_text`
+- `error_text`
+- `created_at`
+- `sent_at`
 
 ## Current Derived Signals
 
@@ -242,6 +351,14 @@ These tables use `profile_key` so `tech` and `finance` can:
 - store different rendered summaries
 - keep separate resend suppression
 - answer follow-ups from the right digest namespace
+
+## Housing Watcher State
+
+The housing watcher tables are separate from the profile-scoped news engine tables.
+
+- they do not use `profile_key`
+- they do not affect digest ranking or follow-up context
+- they store watcher-specific evidence, adjudication, and delivery state
 
 ## Current Source Families
 

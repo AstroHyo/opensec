@@ -1,10 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
+import type { HousingCandidateRecord, HousingDecision, HousingNotificationRecord } from "./housing/types.js";
 import { canonicalizeUrl, normalizeTitle, sha256Hex } from "./util/canonicalize.js";
 import { titleSimilarity } from "./util/dedupe.js";
 import { collapseWhitespace, firstNonEmpty, uniqueStrings } from "./util/text.js";
 import type {
+  ArticleContextRecord,
   DigestBuildResult,
   DigestMode,
   DigestEntry,
@@ -183,6 +185,25 @@ CREATE TABLE IF NOT EXISTS digest_enrichments (
   UNIQUE(digest_cache_key, prompt_version)
 );
 
+CREATE TABLE IF NOT EXISTS article_contexts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  item_id INTEGER NOT NULL REFERENCES normalized_items(id) ON DELETE CASCADE,
+  source_hash TEXT NOT NULL,
+  canonical_url TEXT NOT NULL,
+  fetch_status TEXT NOT NULL,
+  publisher TEXT,
+  author TEXT,
+  published_at TEXT,
+  headline TEXT NOT NULL,
+  dek TEXT,
+  clean_text TEXT NOT NULL,
+  key_sections_json TEXT NOT NULL,
+  evidence_snippets_json TEXT NOT NULL,
+  word_count INTEGER NOT NULL DEFAULT 0,
+  fetched_at TEXT NOT NULL,
+  UNIQUE(item_id, source_hash)
+);
+
 CREATE TABLE IF NOT EXISTS signal_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   source_id TEXT NOT NULL,
@@ -210,6 +231,76 @@ CREATE TABLE IF NOT EXISTS signal_event_matches (
   UNIQUE(signal_event_id, item_id)
 );
 
+CREATE TABLE IF NOT EXISTS housing_watch_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  started_at TEXT NOT NULL,
+  completed_at TEXT,
+  status TEXT NOT NULL,
+  queries_json TEXT NOT NULL,
+  harvested_count INTEGER NOT NULL DEFAULT 0,
+  candidate_count INTEGER NOT NULL DEFAULT 0,
+  notified_count INTEGER NOT NULL DEFAULT 0,
+  error_text TEXT,
+  stats_json TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS housing_watch_candidates (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  note_id TEXT NOT NULL UNIQUE,
+  note_url TEXT NOT NULL,
+  title TEXT NOT NULL,
+  author_name TEXT,
+  city TEXT,
+  neighborhood TEXT,
+  location_summary TEXT,
+  location_text TEXT,
+  posted_at TEXT,
+  first_seen_at TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL,
+  last_evaluated_at TEXT,
+  search_queries_json TEXT NOT NULL,
+  body_text TEXT NOT NULL,
+  page_text TEXT NOT NULL,
+  ocr_text TEXT,
+  image_urls_json TEXT NOT NULL,
+  screenshot_captured INTEGER NOT NULL DEFAULT 0,
+  hard_filter_decision TEXT NOT NULL,
+  hard_filter_reasons_json TEXT NOT NULL,
+  llm_prompt_version TEXT,
+  llm_model_name TEXT,
+  llm_input_hash TEXT,
+  llm_output_json TEXT,
+  decision TEXT NOT NULL,
+  decision_reasons_json TEXT NOT NULL,
+  confidence REAL,
+  unit_type TEXT NOT NULL DEFAULT 'unknown',
+  whole_unit INTEGER,
+  female_only INTEGER,
+  shared_space INTEGER,
+  roommate_only INTEGER,
+  availability_summary TEXT,
+  availability_start TEXT,
+  availability_end TEXT,
+  commute_friendly INTEGER,
+  raw_payload_json TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS housing_watch_notifications (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  candidate_id INTEGER REFERENCES housing_watch_candidates(id) ON DELETE CASCADE,
+  notification_type TEXT NOT NULL,
+  delivery_key TEXT NOT NULL UNIQUE,
+  destination_user_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  message_text TEXT NOT NULL,
+  error_text TEXT,
+  created_at TEXT NOT NULL,
+  sent_at TEXT
+);
+
+`;
+
+const INDEXES = `
 CREATE INDEX IF NOT EXISTS idx_normalized_items_title_hash ON normalized_items(title_hash);
 CREATE INDEX IF NOT EXISTS idx_normalized_items_last_seen ON normalized_items(last_seen_at);
 CREATE INDEX IF NOT EXISTS idx_digests_profile_mode_generated ON digests(profile_key, mode, generated_at DESC);
@@ -219,9 +310,12 @@ CREATE INDEX IF NOT EXISTS idx_source_runs_profile_source_started ON source_runs
 CREATE INDEX IF NOT EXISTS idx_llm_runs_profile_type_started ON llm_runs(profile_key, run_type, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_item_enrichments_item_lookup ON item_enrichments(profile_key, item_id, prompt_version, source_hash);
 CREATE INDEX IF NOT EXISTS idx_digest_enrichments_lookup ON digest_enrichments(profile_key, digest_cache_key, prompt_version);
+CREATE INDEX IF NOT EXISTS idx_article_contexts_item_lookup ON article_contexts(item_id, source_hash);
 CREATE INDEX IF NOT EXISTS idx_signal_events_linked_url ON signal_events(linked_url);
 CREATE INDEX IF NOT EXISTS idx_signal_events_fetched_at ON signal_events(fetched_at DESC);
 CREATE INDEX IF NOT EXISTS idx_signal_event_matches_item ON signal_event_matches(item_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_housing_watch_candidates_decision ON housing_watch_candidates(decision, last_seen_at DESC);
+CREATE INDEX IF NOT EXISTS idx_housing_watch_notifications_type_created ON housing_watch_notifications(notification_type, created_at DESC);
 `;
 
 export class NewsDatabase {
@@ -235,6 +329,7 @@ export class NewsDatabase {
     this.db = new Database(dbPath);
     this.db.exec(SCHEMA);
     this.applyMigrations();
+    this.applyIndexes();
   }
 
   close(): void {
@@ -251,6 +346,20 @@ export class NewsDatabase {
     this.ensureColumn("llm_runs", "profile_key", "TEXT NOT NULL DEFAULT 'tech'");
     this.ensureColumn("item_enrichments", "profile_key", "TEXT NOT NULL DEFAULT 'tech'");
     this.ensureColumn("digest_enrichments", "profile_key", "TEXT NOT NULL DEFAULT 'tech'");
+    this.ensureColumn("item_enrichments", "what_changed_ko", "TEXT");
+    this.ensureColumn("item_enrichments", "engineer_relevance_ko", "TEXT");
+    this.ensureColumn("item_enrichments", "ai_ecosystem_ko", "TEXT");
+    this.ensureColumn("item_enrichments", "openai_angle_ko", "TEXT");
+    this.ensureColumn("item_enrichments", "trend_signal_ko", "TEXT");
+    this.ensureColumn("item_enrichments", "cause_effect_ko", "TEXT");
+    this.ensureColumn("item_enrichments", "watchpoints_json", "TEXT NOT NULL DEFAULT '[]'");
+    this.ensureColumn("item_enrichments", "evidence_spans_json", "TEXT NOT NULL DEFAULT '[]'");
+    this.ensureColumn("item_enrichments", "novelty_score", "REAL");
+    this.ensureColumn("item_enrichments", "insight_score", "REAL");
+  }
+
+  private applyIndexes(): void {
+    this.db.exec(INDEXES);
   }
 
   private ensureColumn(tableName: string, columnName: string, columnSql: string): void {
@@ -288,6 +397,294 @@ export class NewsDatabase {
         summary.errors?.join("\n") ?? null,
         runId
       );
+  }
+
+  startHousingWatchRun(input: { startedAt: string; queries: string[] }): number {
+    const result = this.db
+      .prepare(
+        `INSERT INTO housing_watch_runs (started_at, status, queries_json, stats_json)
+         VALUES (?, 'running', ?, '{}')`
+      )
+      .run(input.startedAt, JSON.stringify(input.queries));
+    return Number(result.lastInsertRowid);
+  }
+
+  finishHousingWatchRun(input: {
+    runId: number;
+    status: "ok" | "partial" | "error";
+    completedAt: string;
+    harvestedCount: number;
+    candidateCount: number;
+    notifiedCount: number;
+    errorText?: string | null;
+    stats?: Record<string, unknown>;
+  }): void {
+    this.db
+      .prepare(
+        `UPDATE housing_watch_runs
+         SET completed_at = ?, status = ?, harvested_count = ?, candidate_count = ?, notified_count = ?, error_text = ?, stats_json = ?
+         WHERE id = ?`
+      )
+      .run(
+        input.completedAt,
+        input.status,
+        input.harvestedCount,
+        input.candidateCount,
+        input.notifiedCount,
+        input.errorText ?? null,
+        JSON.stringify(input.stats ?? {}),
+        input.runId
+      );
+  }
+
+  getHousingWatchCandidateByNoteId(noteId: string): HousingCandidateRecord | null {
+    const row = this.db
+      .prepare<unknown[], HousingCandidateRow>(
+        `SELECT *
+         FROM housing_watch_candidates
+         WHERE note_id = ?
+         LIMIT 1`
+      )
+      .get(noteId);
+
+    return row ? mapHousingCandidateRow(row) : null;
+  }
+
+  upsertHousingWatchCandidate(input: {
+    noteId: string;
+    noteUrl: string;
+    title: string;
+    authorName?: string | null;
+    city?: string | null;
+    neighborhood?: string | null;
+    locationSummary?: string | null;
+    locationText?: string | null;
+    postedAt?: string | null;
+    seenAt: string;
+    lastEvaluatedAt?: string | null;
+    searchQueries: string[];
+    bodyText: string;
+    pageText: string;
+    ocrText?: string | null;
+    imageUrls: string[];
+    screenshotCaptured: boolean;
+    hardFilterDecision: HousingDecision;
+    hardFilterReasons: string[];
+    llmPromptVersion?: string | null;
+    llmModelName?: string | null;
+    llmInputHash?: string | null;
+    llmOutput?: Record<string, unknown> | null;
+    decision: HousingDecision;
+    decisionReasons: string[];
+    confidence?: number | null;
+    unitType: string;
+    wholeUnit: boolean | null;
+    femaleOnly: boolean | null;
+    sharedSpace: boolean | null;
+    roommateOnly: boolean | null;
+    availabilitySummary?: string | null;
+    availabilityStart?: string | null;
+    availabilityEnd?: string | null;
+    commuteFriendly: boolean | null;
+    rawPayload: Record<string, unknown>;
+  }): HousingCandidateRecord {
+    const existing = this.getHousingWatchCandidateByNoteId(input.noteId);
+
+    if (!existing) {
+      const inserted = this.db
+        .prepare(
+          `INSERT INTO housing_watch_candidates (
+            note_id, note_url, title, author_name, city, neighborhood, location_summary, location_text, posted_at,
+            first_seen_at, last_seen_at, last_evaluated_at, search_queries_json, body_text, page_text, ocr_text,
+            image_urls_json, screenshot_captured, hard_filter_decision, hard_filter_reasons_json, llm_prompt_version,
+            llm_model_name, llm_input_hash, llm_output_json, decision, decision_reasons_json, confidence, unit_type,
+            whole_unit, female_only, shared_space, roommate_only, availability_summary, availability_start,
+            availability_end, commute_friendly, raw_payload_json
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          input.noteId,
+          input.noteUrl,
+          input.title,
+          input.authorName ?? null,
+          input.city ?? null,
+          input.neighborhood ?? null,
+          input.locationSummary ?? null,
+          input.locationText ?? null,
+          input.postedAt ?? null,
+          input.seenAt,
+          input.seenAt,
+          input.lastEvaluatedAt ?? null,
+          JSON.stringify(uniqueStrings(input.searchQueries)),
+          input.bodyText,
+          input.pageText,
+          input.ocrText ?? null,
+          JSON.stringify(uniqueStrings(input.imageUrls)),
+          input.screenshotCaptured ? 1 : 0,
+          input.hardFilterDecision,
+          JSON.stringify(input.hardFilterReasons),
+          input.llmPromptVersion ?? null,
+          input.llmModelName ?? null,
+          input.llmInputHash ?? null,
+          input.llmOutput ? JSON.stringify(input.llmOutput) : null,
+          input.decision,
+          JSON.stringify(input.decisionReasons),
+          input.confidence ?? null,
+          input.unitType,
+          booleanToSql(input.wholeUnit),
+          booleanToSql(input.femaleOnly),
+          booleanToSql(input.sharedSpace),
+          booleanToSql(input.roommateOnly),
+          input.availabilitySummary ?? null,
+          input.availabilityStart ?? null,
+          input.availabilityEnd ?? null,
+          booleanToSql(input.commuteFriendly),
+          JSON.stringify(input.rawPayload)
+        );
+
+      return this.getHousingWatchCandidateById(Number(inserted.lastInsertRowid));
+    }
+
+    const mergedPayload = mergeRecords(existing.rawPayload, input.rawPayload);
+    this.db
+      .prepare(
+        `UPDATE housing_watch_candidates
+         SET note_url = ?, title = ?, author_name = ?, city = ?, neighborhood = ?, location_summary = ?, location_text = ?,
+             posted_at = ?, last_seen_at = ?, last_evaluated_at = ?, search_queries_json = ?, body_text = ?, page_text = ?,
+             ocr_text = ?, image_urls_json = ?, screenshot_captured = ?, hard_filter_decision = ?, hard_filter_reasons_json = ?,
+             llm_prompt_version = ?, llm_model_name = ?, llm_input_hash = ?, llm_output_json = ?, decision = ?, decision_reasons_json = ?,
+             confidence = ?, unit_type = ?, whole_unit = ?, female_only = ?, shared_space = ?, roommate_only = ?,
+             availability_summary = ?, availability_start = ?, availability_end = ?, commute_friendly = ?, raw_payload_json = ?
+         WHERE id = ?`
+      )
+      .run(
+        input.noteUrl,
+        preferLongerText(existing.title, input.title) ?? input.title,
+        firstNonEmpty(input.authorName, existing.authorName) ?? null,
+        firstNonEmpty(input.city, existing.city) ?? null,
+        firstNonEmpty(input.neighborhood, existing.neighborhood) ?? null,
+        firstNonEmpty(input.locationSummary, existing.locationSummary) ?? null,
+        firstNonEmpty(input.locationText, existing.locationText) ?? null,
+        firstNonEmpty(existing.postedAt, input.postedAt) ?? null,
+        input.seenAt,
+        input.lastEvaluatedAt ?? existing.lastEvaluatedAt ?? null,
+        JSON.stringify(uniqueStrings([...existing.searchQueries, ...input.searchQueries])),
+        preferLongerText(existing.bodyText, input.bodyText) ?? input.bodyText,
+        preferLongerText(existing.pageText, input.pageText) ?? input.pageText,
+        firstNonEmpty(input.ocrText, existing.ocrText) ?? null,
+        JSON.stringify(uniqueStrings([...existing.imageUrls, ...input.imageUrls])),
+        input.screenshotCaptured || existing.screenshotCaptured ? 1 : 0,
+        input.hardFilterDecision,
+        JSON.stringify(input.hardFilterReasons),
+        input.llmPromptVersion ?? existing.llmPromptVersion ?? null,
+        input.llmModelName ?? existing.llmModelName ?? null,
+        input.llmInputHash ?? existing.llmInputHash ?? null,
+        input.llmOutput ? JSON.stringify(input.llmOutput) : existing.llmOutputJson ? JSON.stringify(existing.llmOutputJson) : null,
+        input.decision,
+        JSON.stringify(input.decisionReasons),
+        input.confidence ?? existing.confidence ?? null,
+        input.unitType,
+        booleanToSql(coalesceBoolean(input.wholeUnit, existing.wholeUnit)),
+        booleanToSql(coalesceBoolean(input.femaleOnly, existing.femaleOnly)),
+        booleanToSql(coalesceBoolean(input.sharedSpace, existing.sharedSpace)),
+        booleanToSql(coalesceBoolean(input.roommateOnly, existing.roommateOnly)),
+        firstNonEmpty(input.availabilitySummary, existing.availabilitySummary) ?? null,
+        firstNonEmpty(input.availabilityStart, existing.availabilityStart) ?? null,
+        firstNonEmpty(input.availabilityEnd, existing.availabilityEnd) ?? null,
+        booleanToSql(coalesceBoolean(input.commuteFriendly, existing.commuteFriendly)),
+        JSON.stringify(mergedPayload),
+        existing.id
+      );
+
+    return this.getHousingWatchCandidateById(existing.id);
+  }
+
+  getHousingNotificationByDeliveryKey(deliveryKey: string): HousingNotificationRecord | null {
+    const row = this.db
+      .prepare<unknown[], HousingNotificationRow>(
+        `SELECT *
+         FROM housing_watch_notifications
+         WHERE delivery_key = ?
+         LIMIT 1`
+      )
+      .get(deliveryKey);
+
+    return row ? mapHousingNotificationRow(row) : null;
+  }
+
+  findRecentHousingNotification(input: {
+    notificationType: "candidate" | "maintenance";
+    deliveryKey: string;
+    sinceIso: string;
+  }): HousingNotificationRecord | null {
+    const row = this.db
+      .prepare<unknown[], HousingNotificationRow>(
+        `SELECT *
+         FROM housing_watch_notifications
+         WHERE notification_type = ? AND delivery_key = ? AND created_at >= ?
+         ORDER BY created_at DESC
+         LIMIT 1`
+      )
+      .get(input.notificationType, input.deliveryKey, input.sinceIso);
+
+    return row ? mapHousingNotificationRow(row) : null;
+  }
+
+  createHousingNotification(input: {
+    candidateId?: number | null;
+    notificationType: "candidate" | "maintenance";
+    deliveryKey: string;
+    destinationUserId: string;
+    status: HousingNotificationRecord["status"];
+    messageText: string;
+    createdAt: string;
+    errorText?: string | null;
+  }): HousingNotificationRecord {
+    const result = this.db
+      .prepare(
+        `INSERT OR IGNORE INTO housing_watch_notifications (
+          candidate_id, notification_type, delivery_key, destination_user_id, status, message_text, error_text, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        input.candidateId ?? null,
+        input.notificationType,
+        input.deliveryKey,
+        input.destinationUserId,
+        input.status,
+        input.messageText,
+        input.errorText ?? null,
+        input.createdAt
+      );
+
+    if (Number(result.changes) === 0) {
+      const existing = this.getHousingNotificationByDeliveryKey(input.deliveryKey);
+      if (!existing) {
+        throw new Error(`Failed to load housing notification ${input.deliveryKey}`);
+      }
+      return existing;
+    }
+
+    const saved = this.getHousingNotificationByDeliveryKey(input.deliveryKey);
+    if (!saved) {
+      throw new Error(`Failed to load housing notification ${input.deliveryKey}`);
+    }
+    return saved;
+  }
+
+  updateHousingNotification(input: {
+    id: number;
+    status: HousingNotificationRecord["status"];
+    sentAt?: string | null;
+    errorText?: string | null;
+  }): void {
+    this.db
+      .prepare(
+        `UPDATE housing_watch_notifications
+         SET status = ?, sent_at = ?, error_text = ?
+         WHERE id = ?`
+      )
+      .run(input.status, input.sentAt ?? null, input.errorText ?? null, input.id);
   }
 
   recordRawItem(input: SourceItemInput): void {
@@ -782,6 +1179,16 @@ export class NewsDatabase {
     sourceHash: string;
     summaryKo: string;
     whyImportantKo: string;
+    whatChangedKo?: string | null;
+    engineerRelevanceKo?: string | null;
+    aiEcosystemKo?: string | null;
+    openAiAngleKo?: string | null;
+    trendSignalKo?: string | null;
+    causeEffectKo?: string | null;
+    watchpoints: string[];
+    evidenceSpans: string[];
+    noveltyScore?: number | null;
+    insightScore?: number | null;
     confidence: number;
     uncertaintyNotes: string[];
     themeTags: string[];
@@ -792,14 +1199,26 @@ export class NewsDatabase {
       .prepare(
         `INSERT INTO item_enrichments (
           profile_key, item_id, llm_run_id, prompt_version, source_hash, summary_ko, why_important_ko,
+          what_changed_ko, engineer_relevance_ko, ai_ecosystem_ko, openai_angle_ko, trend_signal_ko,
+          cause_effect_ko, watchpoints_json, evidence_spans_json, novelty_score, insight_score,
           confidence, uncertainty_notes_json, theme_tags_json, officialness_note, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(item_id, prompt_version, source_hash)
         DO UPDATE SET
           profile_key = excluded.profile_key,
           llm_run_id = excluded.llm_run_id,
           summary_ko = excluded.summary_ko,
           why_important_ko = excluded.why_important_ko,
+          what_changed_ko = excluded.what_changed_ko,
+          engineer_relevance_ko = excluded.engineer_relevance_ko,
+          ai_ecosystem_ko = excluded.ai_ecosystem_ko,
+          openai_angle_ko = excluded.openai_angle_ko,
+          trend_signal_ko = excluded.trend_signal_ko,
+          cause_effect_ko = excluded.cause_effect_ko,
+          watchpoints_json = excluded.watchpoints_json,
+          evidence_spans_json = excluded.evidence_spans_json,
+          novelty_score = excluded.novelty_score,
+          insight_score = excluded.insight_score,
           confidence = excluded.confidence,
           uncertainty_notes_json = excluded.uncertainty_notes_json,
           theme_tags_json = excluded.theme_tags_json,
@@ -814,6 +1233,16 @@ export class NewsDatabase {
         input.sourceHash,
         input.summaryKo,
         input.whyImportantKo,
+        input.whatChangedKo ?? null,
+        input.engineerRelevanceKo ?? null,
+        input.aiEcosystemKo ?? null,
+        input.openAiAngleKo ?? null,
+        input.trendSignalKo ?? null,
+        input.causeEffectKo ?? null,
+        JSON.stringify(input.watchpoints),
+        JSON.stringify(input.evidenceSpans),
+        input.noveltyScore ?? null,
+        input.insightScore ?? null,
         input.confidence,
         JSON.stringify(input.uncertaintyNotes),
         JSON.stringify(input.themeTags),
@@ -824,6 +1253,94 @@ export class NewsDatabase {
     const saved = this.getItemEnrichment(input.profileKey, input.itemId, input.promptVersion, input.sourceHash);
     if (!saved) {
       throw new Error(`Failed to load saved item enrichment for item ${input.itemId}`);
+    }
+    return saved;
+  }
+
+  getArticleContext(itemId: number, sourceHash: string): ArticleContextRecord | null {
+    const row = this.db
+      .prepare<unknown[], ArticleContextRow>(
+        `SELECT *
+         FROM article_contexts
+         WHERE item_id = ? AND source_hash = ?
+         LIMIT 1`
+      )
+      .get(itemId, sourceHash);
+
+    return row ? mapArticleContextRow(row) : null;
+  }
+
+  getLatestArticleContext(itemId: number): ArticleContextRecord | null {
+    const row = this.db
+      .prepare<unknown[], ArticleContextRow>(
+        `SELECT *
+         FROM article_contexts
+         WHERE item_id = ?
+         ORDER BY fetched_at DESC
+         LIMIT 1`
+      )
+      .get(itemId);
+
+    return row ? mapArticleContextRow(row) : null;
+  }
+
+  saveArticleContext(input: {
+    itemId: number;
+    sourceHash: string;
+    canonicalUrl: string;
+    fetchStatus: ArticleContextRecord["fetchStatus"];
+    publisher?: string | null;
+    author?: string | null;
+    publishedAt?: string | null;
+    headline: string;
+    dek?: string | null;
+    cleanText: string;
+    keySections: string[];
+    evidenceSnippets: string[];
+    wordCount: number;
+    fetchedAt: string;
+  }): ArticleContextRecord {
+    this.db
+      .prepare(
+        `INSERT INTO article_contexts (
+          item_id, source_hash, canonical_url, fetch_status, publisher, author, published_at,
+          headline, dek, clean_text, key_sections_json, evidence_snippets_json, word_count, fetched_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(item_id, source_hash)
+        DO UPDATE SET
+          canonical_url = excluded.canonical_url,
+          fetch_status = excluded.fetch_status,
+          publisher = excluded.publisher,
+          author = excluded.author,
+          published_at = excluded.published_at,
+          headline = excluded.headline,
+          dek = excluded.dek,
+          clean_text = excluded.clean_text,
+          key_sections_json = excluded.key_sections_json,
+          evidence_snippets_json = excluded.evidence_snippets_json,
+          word_count = excluded.word_count,
+          fetched_at = excluded.fetched_at`
+      )
+      .run(
+        input.itemId,
+        input.sourceHash,
+        input.canonicalUrl,
+        input.fetchStatus,
+        input.publisher ?? null,
+        input.author ?? null,
+        input.publishedAt ?? null,
+        input.headline,
+        input.dek ?? null,
+        input.cleanText,
+        JSON.stringify(input.keySections),
+        JSON.stringify(input.evidenceSnippets),
+        input.wordCount,
+        input.fetchedAt
+      );
+
+    const saved = this.getArticleContext(input.itemId, input.sourceHash);
+    if (!saved) {
+      throw new Error(`Failed to load saved article context for item ${input.itemId}`);
     }
     return saved;
   }
@@ -964,6 +1481,22 @@ export class NewsDatabase {
         input.fetchedAt,
         JSON.stringify(input.rawPayload ?? input.metadata ?? {})
       );
+  }
+
+  private getHousingWatchCandidateById(id: number): HousingCandidateRecord {
+    const row = this.db
+      .prepare<unknown[], HousingCandidateRow>(
+        `SELECT *
+         FROM housing_watch_candidates
+         WHERE id = ?`
+      )
+      .get(id);
+
+    if (!row) {
+      throw new Error(`Housing watch candidate ${id} not found`);
+    }
+
+    return mapHousingCandidateRow(row);
   }
 
   private getNormalizedItemById(id: number): NormalizedItemRecord {
@@ -1161,11 +1694,41 @@ function mapItemEnrichmentRow(row: ItemEnrichmentRow): ItemEnrichmentRecord {
     sourceHash: row.source_hash,
     summaryKo: row.summary_ko,
     whyImportantKo: row.why_important_ko,
+    whatChangedKo: row.what_changed_ko,
+    engineerRelevanceKo: row.engineer_relevance_ko,
+    aiEcosystemKo: row.ai_ecosystem_ko,
+    openAiAngleKo: row.openai_angle_ko,
+    trendSignalKo: row.trend_signal_ko,
+    causeEffectKo: row.cause_effect_ko,
+    watchpoints: JSON.parse(row.watchpoints_json),
+    evidenceSpans: JSON.parse(row.evidence_spans_json),
+    noveltyScore: row.novelty_score,
+    insightScore: row.insight_score,
     confidence: row.confidence,
     uncertaintyNotes: JSON.parse(row.uncertainty_notes_json),
     themeTags: JSON.parse(row.theme_tags_json),
     officialnessNote: row.officialness_note,
     createdAt: row.created_at
+  };
+}
+
+function mapArticleContextRow(row: ArticleContextRow): ArticleContextRecord {
+  return {
+    id: row.id,
+    itemId: row.item_id,
+    sourceHash: row.source_hash,
+    canonicalUrl: row.canonical_url,
+    fetchStatus: row.fetch_status as ArticleContextRecord["fetchStatus"],
+    publisher: row.publisher,
+    author: row.author,
+    publishedAt: row.published_at,
+    headline: row.headline,
+    dek: row.dek,
+    cleanText: row.clean_text,
+    keySections: JSON.parse(row.key_sections_json),
+    evidenceSnippets: JSON.parse(row.evidence_snippets_json),
+    wordCount: row.word_count,
+    fetchedAt: row.fetched_at
   };
 }
 
@@ -1198,6 +1761,82 @@ function mapSignalEventRow(row: SignalEventRow): SignalEventRecord {
     metrics: JSON.parse(row.metrics_json),
     metadata: JSON.parse(row.metadata_json)
   };
+}
+
+function mapHousingCandidateRow(row: HousingCandidateRow): HousingCandidateRecord {
+  return {
+    id: row.id,
+    noteId: row.note_id,
+    noteUrl: row.note_url,
+    title: row.title,
+    authorName: row.author_name,
+    city: row.city,
+    neighborhood: row.neighborhood,
+    locationSummary: row.location_summary,
+    locationText: row.location_text,
+    postedAt: row.posted_at,
+    firstSeenAt: row.first_seen_at,
+    lastSeenAt: row.last_seen_at,
+    lastEvaluatedAt: row.last_evaluated_at,
+    searchQueries: JSON.parse(row.search_queries_json),
+    bodyText: row.body_text,
+    pageText: row.page_text,
+    ocrText: row.ocr_text,
+    imageUrls: JSON.parse(row.image_urls_json),
+    screenshotCaptured: row.screenshot_captured === 1,
+    hardFilterDecision: row.hard_filter_decision as HousingDecision,
+    hardFilterReasons: JSON.parse(row.hard_filter_reasons_json),
+    llmPromptVersion: row.llm_prompt_version,
+    llmModelName: row.llm_model_name,
+    llmInputHash: row.llm_input_hash,
+    llmOutputJson: row.llm_output_json ? JSON.parse(row.llm_output_json) : null,
+    decision: row.decision as HousingDecision,
+    decisionReasons: JSON.parse(row.decision_reasons_json),
+    confidence: row.confidence,
+    unitType: row.unit_type as HousingCandidateRecord["unitType"],
+    wholeUnit: sqlToBoolean(row.whole_unit),
+    femaleOnly: sqlToBoolean(row.female_only),
+    sharedSpace: sqlToBoolean(row.shared_space),
+    roommateOnly: sqlToBoolean(row.roommate_only),
+    availabilitySummary: row.availability_summary,
+    availabilityStart: row.availability_start,
+    availabilityEnd: row.availability_end,
+    commuteFriendly: sqlToBoolean(row.commute_friendly),
+    rawPayload: JSON.parse(row.raw_payload_json)
+  };
+}
+
+function mapHousingNotificationRow(row: HousingNotificationRow): HousingNotificationRecord {
+  return {
+    id: row.id,
+    candidateId: row.candidate_id,
+    notificationType: row.notification_type as HousingNotificationRecord["notificationType"],
+    deliveryKey: row.delivery_key,
+    destinationUserId: row.destination_user_id,
+    status: row.status as HousingNotificationRecord["status"],
+    messageText: row.message_text,
+    errorText: row.error_text,
+    createdAt: row.created_at,
+    sentAt: row.sent_at
+  };
+}
+
+function booleanToSql(value: boolean | null): number | null {
+  if (value == null) {
+    return null;
+  }
+  return value ? 1 : 0;
+}
+
+function sqlToBoolean(value?: number | null): boolean | null {
+  if (value == null) {
+    return null;
+  }
+  return value === 1;
+}
+
+function coalesceBoolean(incoming: boolean | null, existing: boolean | null): boolean | null {
+  return incoming == null ? existing : incoming;
 }
 
 interface ExistingItemRow {
@@ -1276,11 +1915,39 @@ interface ItemEnrichmentRow {
   source_hash: string;
   summary_ko: string;
   why_important_ko: string;
+  what_changed_ko?: string | null;
+  engineer_relevance_ko?: string | null;
+  ai_ecosystem_ko?: string | null;
+  openai_angle_ko?: string | null;
+  trend_signal_ko?: string | null;
+  cause_effect_ko?: string | null;
+  watchpoints_json: string;
+  evidence_spans_json: string;
+  novelty_score?: number | null;
+  insight_score?: number | null;
   confidence: number;
   uncertainty_notes_json: string;
   theme_tags_json: string;
   officialness_note?: string | null;
   created_at: string;
+}
+
+interface ArticleContextRow {
+  id: number;
+  item_id: number;
+  source_hash: string;
+  canonical_url: string;
+  fetch_status: string;
+  publisher?: string | null;
+  author?: string | null;
+  published_at?: string | null;
+  headline: string;
+  dek?: string | null;
+  clean_text: string;
+  key_sections_json: string;
+  evidence_snippets_json: string;
+  word_count: number;
+  fetched_at: string;
 }
 
 interface DigestEnrichmentRow {
@@ -1309,6 +1976,60 @@ interface SignalEventRow {
   fetched_at: string;
   metrics_json: string;
   metadata_json: string;
+}
+
+interface HousingCandidateRow {
+  id: number;
+  note_id: string;
+  note_url: string;
+  title: string;
+  author_name?: string | null;
+  city?: string | null;
+  neighborhood?: string | null;
+  location_summary?: string | null;
+  location_text?: string | null;
+  posted_at?: string | null;
+  first_seen_at: string;
+  last_seen_at: string;
+  last_evaluated_at?: string | null;
+  search_queries_json: string;
+  body_text: string;
+  page_text: string;
+  ocr_text?: string | null;
+  image_urls_json: string;
+  screenshot_captured: number;
+  hard_filter_decision: string;
+  hard_filter_reasons_json: string;
+  llm_prompt_version?: string | null;
+  llm_model_name?: string | null;
+  llm_input_hash?: string | null;
+  llm_output_json?: string | null;
+  decision: string;
+  decision_reasons_json: string;
+  confidence?: number | null;
+  unit_type: string;
+  whole_unit?: number | null;
+  female_only?: number | null;
+  shared_space?: number | null;
+  roommate_only?: number | null;
+  availability_summary?: string | null;
+  availability_start?: string | null;
+  availability_end?: string | null;
+  commute_friendly?: number | null;
+  raw_payload_json: string;
+}
+
+interface HousingNotificationRow {
+  id: number;
+  candidate_id?: number | null;
+  notification_type: string;
+  delivery_key: string;
+  destination_user_id: string;
+  status: string;
+  message_text: string;
+  error_text?: string | null;
+  created_at: string;
+  sent_at?: string | null;
 }
 
 interface SignalMatchRow extends SignalEventRow {

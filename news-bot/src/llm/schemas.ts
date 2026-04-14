@@ -1,14 +1,22 @@
 import { z } from "zod";
 
-export const ITEM_ENRICHMENT_PROMPT_VERSION = "item_enrichment_v1";
-export const THEME_SYNTHESIS_PROMPT_VERSION = "theme_synthesis_v1";
+export const ITEM_ENRICHMENT_PROMPT_VERSION = "item_enrichment_v2";
+export const THEME_SYNTHESIS_PROMPT_VERSION = "theme_synthesis_v2";
 export const ASK_FOLLOWUP_PROMPT_VERSION = "followup_answer_v1";
 export const RESEARCH_FOLLOWUP_PROMPT_VERSION = "followup_research_v1";
 
 export const itemEnrichmentSchema = z.object({
   item_id: z.number().int().nonnegative(),
-  summary_ko: z.string().min(1).max(240),
-  why_important_ko: z.string().min(1).max(220),
+  what_changed_ko: z.string().min(1).max(700),
+  engineer_relevance_ko: z.string().min(1).max(420),
+  ai_ecosystem_ko: z.string().min(1).max(420),
+  openai_angle_ko: z.string().max(320).nullable().optional(),
+  trend_signal_ko: z.string().min(1).max(320),
+  cause_effect_ko: z.string().min(1).max(320),
+  watchpoints_ko: z.array(z.string().min(1).max(180)).max(3),
+  evidence_spans: z.array(z.string().min(1).max(240)).max(4),
+  novelty_score: z.number().min(0).max(1),
+  insight_score: z.number().min(0).max(1),
   confidence: z.number().min(0).max(1),
   uncertainty_notes: z.array(z.string().min(1).max(140)).max(3),
   theme_tags: z.array(z.string().min(1).max(32)).max(6),
@@ -66,8 +74,15 @@ export const itemEnrichmentJsonSchema = {
         additionalProperties: false,
         required: [
           "item_id",
-          "summary_ko",
-          "why_important_ko",
+          "what_changed_ko",
+          "engineer_relevance_ko",
+          "ai_ecosystem_ko",
+          "trend_signal_ko",
+          "cause_effect_ko",
+          "watchpoints_ko",
+          "evidence_spans",
+          "novelty_score",
+          "insight_score",
           "confidence",
           "uncertainty_notes",
           "theme_tags",
@@ -75,8 +90,24 @@ export const itemEnrichmentJsonSchema = {
         ],
         properties: {
           item_id: { type: "integer" },
-          summary_ko: { type: "string" },
-          why_important_ko: { type: "string" },
+          what_changed_ko: { type: "string" },
+          engineer_relevance_ko: { type: "string" },
+          ai_ecosystem_ko: { type: "string" },
+          openai_angle_ko: { type: ["string", "null"] },
+          trend_signal_ko: { type: "string" },
+          cause_effect_ko: { type: "string" },
+          watchpoints_ko: {
+            type: "array",
+            items: { type: "string" },
+            maxItems: 3
+          },
+          evidence_spans: {
+            type: "array",
+            items: { type: "string" },
+            maxItems: 4
+          },
+          novelty_score: { type: "number", minimum: 0, maximum: 1 },
+          insight_score: { type: "number", minimum: 0, maximum: 1 },
           confidence: { type: "number", minimum: 0, maximum: 1 },
           uncertainty_notes: {
             type: "array",

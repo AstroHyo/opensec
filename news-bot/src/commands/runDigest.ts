@@ -5,6 +5,7 @@ import type { AppConfig } from "../config.js";
 import { loadConfig } from "../config.js";
 import { NewsDatabase } from "../db.js";
 import { buildDigest } from "../digest/buildDigest.js";
+import { embedArticleContexts, ensureArticleContexts } from "../evidence/articleContext.js";
 import { maybeEnrichDigest } from "../llm/enrichDigest.js";
 import { PROFILE_KEYS } from "../profiles.js";
 import { collectAndStoreSources } from "../sources/index.js";
@@ -54,6 +55,18 @@ export async function runDigestFlow(options: RunDigestOptions): Promise<{
     mode: options.mode,
     now
   });
+
+  const evidenceTargetItems = digest.candidateEntries ?? digest.items;
+  if (evidenceTargetItems.length > 0) {
+    const contexts = await ensureArticleContexts({
+      db,
+      config,
+      items: evidenceTargetItems,
+      fetchedAt: now.toUTC().toISO() ?? new Date().toISOString()
+    });
+    embedArticleContexts(evidenceTargetItems, contexts);
+    embedArticleContexts(digest.items, contexts);
+  }
 
   await maybeEnrichDigest({
     db,

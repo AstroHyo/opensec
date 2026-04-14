@@ -14,11 +14,7 @@ export function renderTelegramDigest(result: DigestBuildResult): string {
     sectionIndex += 1;
 
     for (const item of section.items) {
-      lines.push(formatItemLine(item));
-      lines.push(`한줄 요약: ${collapseWhitespace(item.summary)}`);
-      lines.push(`왜 중요한지: ${collapseWhitespace(item.whyImportant)}`);
-      lines.push(`출처: ${item.sourceLabel}`);
-      lines.push(`링크: ${item.primaryUrl}`);
+      lines.push(...formatItemBlock(item));
       lines.push("");
     }
 
@@ -47,4 +43,31 @@ function formatItemLine(item: DigestEntry): string {
     return `[${item.number}] ${item.title} | ${lang} | +${item.repoStarsToday} today`;
   }
   return `[${item.number}] ${item.title}`;
+}
+
+function formatItemBlock(item: DigestEntry): string[] {
+  if (item.profileKey === "finance") {
+    return [
+      formatItemLine(item),
+      `한줄 요약: ${collapseWhitespace(item.summary)}`,
+      `왜 중요한지: ${collapseWhitespace(item.whyImportant)}`,
+      `출처: ${item.sourceLabel}`,
+      `링크: ${item.primaryUrl}`
+    ];
+  }
+
+  const lines = [
+    formatItemLine(item),
+    `무슨 일: ${collapseWhitespace(item.whatChanged ?? item.summary)}`,
+    `엔지니어 관점: ${collapseWhitespace(item.engineerRelevance ?? item.whyImportant)}`,
+    `AI 맥락: ${collapseWhitespace(item.aiEcosystem ?? item.whyImportant)}`
+  ];
+
+  if (item.openAiAngle) {
+    lines.push(`OpenAI 각도: ${collapseWhitespace(item.openAiAngle)}`);
+  }
+
+  lines.push(`변화 신호: ${collapseWhitespace(item.trendSignal ?? item.causeEffect ?? item.whyImportant)}`);
+  lines.push(`링크: ${item.primaryUrl}`);
+  return lines;
 }

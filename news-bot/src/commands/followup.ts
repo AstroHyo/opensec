@@ -114,19 +114,19 @@ function tryDeterministicCommand(command: string, profileKey: ProfileKey, db: Ne
   const expandMatch = command.match(/^expand\s+(\d+)$/);
   if (expandMatch) {
     const item = db.getFollowupContext(profileKey, Number.parseInt(expandMatch[1], 10));
-    return item ? renderExpandedItem(item) : notFound(expandMatch[1]);
+    return item ? renderExpandedItem(item, db) : notFound(expandMatch[1]);
   }
 
   const sourceMatch = command.match(/^show sources for\s+(\d+)$/);
   if (sourceMatch) {
     const item = db.getFollowupContext(profileKey, Number.parseInt(sourceMatch[1], 10));
-    return item ? renderSources(item) : notFound(sourceMatch[1]);
+    return item ? renderSources(item, db) : notFound(sourceMatch[1]);
   }
 
   const whyMatch = command.match(/^why important\s+(\d+)$/);
   if (whyMatch) {
     const item = db.getFollowupContext(profileKey, Number.parseInt(whyMatch[1], 10));
-    return item ? renderWhyImportant(item) : notFound(whyMatch[1]);
+    return item ? renderWhyImportant(item, db) : notFound(whyMatch[1]);
   }
 
   return null;
@@ -147,33 +147,49 @@ function renderSubset(title: string, items: DigestEntry[], predicate: (item: Dig
     `[${title}]`,
     "",
     ...selected.map((item) =>
-      [
-        `[${item.number}] ${item.title}`,
-        `한줄 요약: ${item.summary}`,
-        `출처: ${item.sourceLabel}`,
-        `링크: ${item.primaryUrl}`
-      ].join("\n")
+      item.profileKey === "finance"
+        ? [
+            `[${item.number}] ${item.title}`,
+            `한줄 요약: ${item.summary}`,
+            `출처: ${item.sourceLabel}`,
+            `링크: ${item.primaryUrl}`
+          ].join("\n")
+        : [
+            `[${item.number}] ${item.title}`,
+            `무슨 일: ${item.whatChanged ?? item.summary}`,
+            `변화 신호: ${item.trendSignal ?? item.causeEffect ?? item.whyImportant}`,
+            `링크: ${item.primaryUrl}`
+          ].join("\n")
     )
   ].join("\n\n");
 }
 
-function renderExpandedItem(item: DigestEntry): string {
+function renderExpandedItem(item: DigestEntry, db: NewsDatabase): string {
+  const articleContext = getStoredArticleContext(item, db);
+  const evidence = uniqueLines([...(item.evidenceSpans ?? []), ...(articleContext?.evidenceSnippets ?? [])]).slice(0, 3);
+  const watchpoints = uniqueLines(item.watchpoints ?? []).slice(0, 3);
+
   return [
     `[Expand ${item.number}] ${item.title}`,
     "",
-    `한줄 요약: ${item.summary}`,
-    `왜 중요한지: ${item.whyImportant}`,
+    `핵심 내용: ${item.whatChanged ?? item.summary}`,
+    `왜 지금 나왔나: ${item.causeEffect ?? item.trendSignal ?? item.whyImportant}`,
+    `엔지니어에게 실제로 달라지는 점: ${item.engineerRelevance ?? item.whyImportant}`,
+    `OpenAI / AI ecosystem 연결: ${[item.openAiAngle, item.aiEcosystem].filter(Boolean).join(" ") || item.whyImportant}`,
+    watchpoints.length ? `앞으로 볼 것:\n${watchpoints.map((point) => `- ${point}`).join("\n")}` : null,
+    evidence.length ? `근거 스니펫:\n${evidence.map((point) => `- ${point}`).join("\n")}` : null,
     item.uncertaintyNotes?.length ? `불확실성 메모: ${item.uncertaintyNotes.join(" / ")}` : null,
-    `점수 근거: ${item.scoreReasons.join(" / ")}`,
-    item.signalLinks?.length ? `추가 신호: ${item.signalLinks.map((signal) => signal.label).join(" / ")}` : null,
-    `설명: ${item.description ?? "추가 설명 없음"}`,
+    articleContext?.headline && articleContext.headline !== item.title ? `원문 헤드라인: ${articleContext.headline}` : null,
     `주요 링크: ${item.primaryUrl}`
   ]
     .filter((value): value is string => Boolean(value))
     .join("\n");
 }
 
-function renderSources(item: DigestEntry): string {
+function renderSources(item: DigestEntry, db: NewsDatabase): string {
+  const articleContext = getStoredArticleContext(item, db);
+  const evidence = uniqueLines([...(item.evidenceSpans ?? []), ...(articleContext?.evidenceSnippets ?? [])]).slice(0, 4);
+
   return [
     `[Sources for ${item.number}] ${item.title}`,
     "",
@@ -184,19 +200,28 @@ function renderSources(item: DigestEntry): string {
     item.signalLinks?.length ? "추가 신호:" : null,
     item.signalLinks?.length
       ? item.signalLinks.map((signal, index) => `${index + 1}. ${signal.label}\n${signal.url}`).join("\n\n")
-      : null
+      : null,
+    evidence.length ? "" : null,
+    evidence.length ? "저장된 근거 스니펫:" : null,
+    evidence.length ? evidence.map((value, index) => `${index + 1}. ${value}`).join("\n\n") : null
   ]
     .filter((value): value is string => Boolean(value))
     .join("\n\n");
 }
 
-function renderWhyImportant(item: DigestEntry): string {
+function renderWhyImportant(item: DigestEntry, db: NewsDatabase): string {
+  const articleContext = getStoredArticleContext(item, db);
+  const strategicMeaning = [item.trendSignal, item.openAiAngle, item.causeEffect].filter(Boolean).join(" ");
   return [
     `[Why important ${item.number}] ${item.title}`,
     "",
-    item.whyImportant,
+    `직접 영향: ${item.engineerRelevance ?? item.whyImportant}`,
     "",
-    `점수 근거: ${item.scoreReasons.join(" / ")}`
+    `2차 영향: ${item.aiEcosystem ?? item.causeEffect ?? item.whyImportant}`,
+    "",
+    `전략적 의미: ${strategicMeaning || item.whyImportant}`,
+    "",
+    articleContext?.evidenceSnippets?.length ? `근거: ${articleContext.evidenceSnippets[0]}` : `근거: ${item.evidenceSpans?.[0] ?? item.summary}`
   ].join("\n");
 }
 
@@ -217,4 +242,37 @@ async function renderFreshDigest(
   });
   db.close();
   return digest.bodyText;
+}
+
+function getStoredArticleContext(
+  item: DigestEntry,
+  db: NewsDatabase
+):
+  | {
+      headline?: string;
+      evidenceSnippets?: string[];
+    }
+  | null {
+  const latest = db.getLatestArticleContext(item.itemId);
+  if (latest) {
+    return {
+      headline: latest.headline,
+      evidenceSnippets: latest.evidenceSnippets
+    };
+  }
+
+  const metadata = item.metadata as Record<string, unknown>;
+  const embedded = metadata.articleContext;
+  if (!embedded || typeof embedded !== "object") {
+    return null;
+  }
+
+  return embedded as {
+    headline?: string;
+    evidenceSnippets?: string[];
+  };
+}
+
+function uniqueLines(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter((value) => value.length > 0))];
 }

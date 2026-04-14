@@ -1,7 +1,14 @@
 import { DateTime } from "luxon";
 import type { AppConfig } from "../config.js";
-import { NewsDatabase } from "../db.js";
-import type { DigestBuildResult, DigestEntry, ItemEnrichmentRecord } from "../types.js";
+import {
+  applyThemeSections,
+  assignNumbers,
+  buildTechSectionsFromEntries,
+  buildThemes
+} from "../digest/buildDigest.js";
+import type { NewsDatabase } from "../db.js";
+import { embedArticleContexts, ensureArticleContexts } from "../evidence/articleContext.js";
+import type { ArticleContextRecord, DigestBuildResult, DigestEntry, ItemEnrichmentRecord } from "../types.js";
 import { sha256Hex } from "../util/canonicalize.js";
 import { collapseWhitespace, truncate } from "../util/text.js";
 import { renderTelegramDigest } from "../digest/renderTelegram.js";
@@ -28,10 +35,17 @@ export async function maybeEnrichDigest(input: {
   }
 
   const maxItems = input.digest.mode === "am" ? input.config.llm.maxItemsAm : input.config.llm.maxItemsPm;
-  const targetItems = input.digest.items.slice(0, maxItems);
+  const targetItems =
+    input.digest.profileKey === "tech"
+      ? (input.digest.candidateEntries ?? input.digest.items).slice(0, maxItems)
+      : input.digest.items.slice(0, maxItems);
 
   if (targetItems.length > 0) {
     await enrichItems(input.db, input.config, apiKey, targetItems, input.digest.mode, input.now);
+  }
+
+  if (input.digest.profileKey === "tech" && targetItems.length > 0) {
+    rebuildTechDigest(input.digest, targetItems);
   }
 
   if (input.config.llm.themesEnabled && input.digest.items.length > 0) {
@@ -49,10 +63,18 @@ async function enrichItems(
   mode: DigestBuildResult["mode"],
   now: DateTime
 ): Promise<void> {
+  const contexts = await ensureArticleContexts({
+    db,
+    config,
+    items,
+    fetchedAt: now.toUTC().toISO() ?? new Date().toISOString()
+  });
+  embedArticleContexts(items, contexts);
   const missing: DigestEntry[] = [];
 
   for (const item of items) {
-    const sourceHash = buildItemSourceHash(item);
+    const articleContext = contexts.get(item.itemId) ?? null;
+    const sourceHash = buildItemSourceHash(item, articleContext);
     const record = db.getItemEnrichment(item.profileKey, item.itemId, ITEM_ENRICHMENT_PROMPT_VERSION, sourceHash);
     if (record) {
       applyItemEnrichment(item, record);
@@ -69,7 +91,7 @@ async function enrichItems(
     JSON.stringify(
       missing.map((item) => ({
         itemId: item.itemId,
-        sourceHash: buildItemSourceHash(item)
+        sourceHash: buildItemSourceHash(item, contexts.get(item.itemId) ?? null)
       }))
     )
   );
@@ -111,9 +133,22 @@ async function enrichItems(
         itemId: item.itemId,
         llmRunId: runId,
         promptVersion: ITEM_ENRICHMENT_PROMPT_VERSION,
-        sourceHash: buildItemSourceHash(item),
-        summaryKo: truncate(collapseWhitespace(enrichment.summary_ko), 180),
-        whyImportantKo: truncate(collapseWhitespace(enrichment.why_important_ko), 160),
+        sourceHash: buildItemSourceHash(item, contexts.get(item.itemId) ?? null),
+        summaryKo: truncate(collapseWhitespace(enrichment.what_changed_ko), 240),
+        whyImportantKo: truncate(
+          [enrichment.engineer_relevance_ko, enrichment.ai_ecosystem_ko].map((value) => collapseWhitespace(value)).join(" "),
+          280
+        ),
+        whatChangedKo: truncate(collapseWhitespace(enrichment.what_changed_ko), 600),
+        engineerRelevanceKo: truncate(collapseWhitespace(enrichment.engineer_relevance_ko), 360),
+        aiEcosystemKo: truncate(collapseWhitespace(enrichment.ai_ecosystem_ko), 360),
+        openAiAngleKo: enrichment.openai_angle_ko ? truncate(collapseWhitespace(enrichment.openai_angle_ko), 280) : null,
+        trendSignalKo: truncate(collapseWhitespace(enrichment.trend_signal_ko), 260),
+        causeEffectKo: truncate(collapseWhitespace(enrichment.cause_effect_ko), 260),
+        watchpoints: enrichment.watchpoints_ko.map((value) => truncate(collapseWhitespace(value), 160)),
+        evidenceSpans: enrichment.evidence_spans.map((value) => truncate(collapseWhitespace(value), 220)),
+        noveltyScore: enrichment.novelty_score,
+        insightScore: enrichment.insight_score,
         confidence: enrichment.confidence,
         uncertaintyNotes: enrichment.uncertainty_notes.map((value) => truncate(collapseWhitespace(value), 120)),
         themeTags: enrichment.theme_tags.map((value) => truncate(collapseWhitespace(value), 32)),
@@ -220,7 +255,7 @@ async function enrichThemes(
   }
 }
 
-export function buildItemSourceHash(item: DigestEntry): string {
+export function buildItemSourceHash(item: DigestEntry, articleContext?: ArticleContextRecord | null): string {
   return sha256Hex(
     JSON.stringify({
       itemId: item.itemId,
@@ -235,7 +270,18 @@ export function buildItemSourceHash(item: DigestEntry): string {
       sourceLinks: item.sourceLinks,
       openaiCategory: item.openaiCategory ?? null,
       repoLanguage: item.repoLanguage ?? null,
-      repoStarsToday: item.repoStarsToday ?? null
+      repoStarsToday: item.repoStarsToday ?? null,
+      articleContext: articleContext
+        ? {
+            headline: articleContext.headline,
+            dek: articleContext.dek ?? null,
+            publisher: articleContext.publisher ?? null,
+            fetchStatus: articleContext.fetchStatus,
+            cleanText: articleContext.cleanText,
+            keySections: articleContext.keySections,
+            evidenceSnippets: articleContext.evidenceSnippets
+          }
+        : null
     })
   );
 }
@@ -248,8 +294,11 @@ export function buildDigestThemeCacheKey(digest: DigestBuildResult): string {
       items: digest.items.map((item) => ({
         itemId: item.itemId,
         title: item.title,
-        summary: item.summary,
-        whyImportant: item.whyImportant,
+        whatChanged: item.whatChanged ?? item.summary,
+        engineerRelevance: item.engineerRelevance ?? item.whyImportant,
+        aiEcosystem: item.aiEcosystem ?? "",
+        trendSignal: item.trendSignal ?? "",
+        causeEffect: item.causeEffect ?? "",
         keywords: item.keywords,
         scoreReasons: item.scoreReasons
       }))
@@ -258,13 +307,29 @@ export function buildDigestThemeCacheKey(digest: DigestBuildResult): string {
 }
 
 export function applyItemEnrichment(item: DigestEntry, enrichment: ItemEnrichmentRecord): void {
-  item.summary = enrichment.summaryKo;
-  item.whyImportant = enrichment.whyImportantKo;
+  item.summary = enrichment.whatChangedKo ?? enrichment.summaryKo;
+  item.whyImportant =
+    enrichment.whyImportantKo ||
+    [enrichment.engineerRelevanceKo, enrichment.aiEcosystemKo].filter(Boolean).join(" ");
+  item.whatChanged = enrichment.whatChangedKo ?? enrichment.summaryKo;
+  item.engineerRelevance = enrichment.engineerRelevanceKo ?? item.engineerRelevance;
+  item.aiEcosystem = enrichment.aiEcosystemKo ?? item.aiEcosystem;
+  item.openAiAngle = enrichment.openAiAngleKo ?? item.openAiAngle ?? null;
+  item.trendSignal = enrichment.trendSignalKo ?? item.trendSignal;
+  item.causeEffect = enrichment.causeEffectKo ?? item.causeEffect;
+  item.watchpoints = enrichment.watchpoints.length > 0 ? enrichment.watchpoints : item.watchpoints;
+  item.evidenceSpans = enrichment.evidenceSpans.length > 0 ? enrichment.evidenceSpans : item.evidenceSpans;
   item.wasLlmEnriched = true;
   item.enrichmentConfidence = enrichment.confidence;
   item.uncertaintyNotes = enrichment.uncertaintyNotes;
   item.themeTags = enrichment.themeTags;
   item.officialnessNote = enrichment.officialnessNote ?? null;
+  if (enrichment.noveltyScore != null || enrichment.insightScore != null) {
+    const delta = computeRerankDelta(item, enrichment);
+    item.rerankDelta = delta;
+    item.finalScore = (item.deterministicScore ?? item.score) + delta;
+    item.score = Math.round(item.finalScore);
+  }
 }
 
 function applyThemeBullets(digest: DigestBuildResult): void {
@@ -274,4 +339,58 @@ function applyThemeBullets(digest: DigestBuildResult): void {
     return;
   }
   section.bullets = digest.themes;
+}
+
+function computeRerankDelta(item: DigestEntry, enrichment: ItemEnrichmentRecord): number {
+  const novelty = enrichment.noveltyScore ?? 0.5;
+  const insight = enrichment.insightScore ?? 0.5;
+  const evidenceDepth = Math.min(1, ((item.evidenceSpans?.length ?? 0) * 0.18) + embeddedWordDepth(item));
+  const raw = (insight - 0.5) * 8 + (novelty - 0.5) * 5 + (evidenceDepth - 0.4) * 4;
+  const bounded = clamp(raw, -4, 8);
+  return Math.round(bounded * 10) / 10;
+}
+
+function embeddedWordDepth(item: DigestEntry): number {
+  const articleContext = getEmbeddedArticleContext(item);
+  const words = Number(articleContext?.wordCount ?? 0);
+  return clamp(words / 2200, 0, 1);
+}
+
+function getEmbeddedArticleContext(item: DigestEntry): {
+  wordCount?: number;
+} | null {
+  const metadata = item.metadata as Record<string, unknown>;
+  const articleContext = metadata.articleContext;
+  if (!articleContext || typeof articleContext !== "object") {
+    return null;
+  }
+  return articleContext as { wordCount?: number };
+}
+
+function rebuildTechDigest(digest: DigestBuildResult, candidatePool: DigestEntry[]): void {
+  const sorted = [...candidatePool].sort((left, right) => {
+    const rightScore = right.finalScore ?? right.deterministicScore ?? right.score;
+    const leftScore = left.finalScore ?? left.deterministicScore ?? left.score;
+    if (rightScore !== leftScore) {
+      return rightScore - leftScore;
+    }
+    if (right.sourceType === "openai_official" && left.sourceType !== "openai_official") {
+      return 1;
+    }
+    if (left.sourceType === "openai_official" && right.sourceType !== "openai_official") {
+      return -1;
+    }
+    return (right.deterministicScore ?? right.score) - (left.deterministicScore ?? left.score);
+  });
+
+  digest.candidateEntries = sorted;
+  digest.sections = buildTechSectionsFromEntries(sorted, digest.mode);
+  assignNumbers(digest.sections);
+  digest.items = digest.sections.flatMap((section) => section.items);
+  digest.themes = buildThemes(digest.items, digest.mode, digest.profileKey);
+  applyThemeSections(digest.sections, digest.themes, digest.mode, digest.profileKey);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }

@@ -8,46 +8,105 @@ export function buildItemEnrichmentPrompts(input: { mode: DigestMode; items: Dig
     "You are improving a Korean AI news digest for a single technical user.",
     "Use only the evidence supplied in the prompt.",
     "Do not invent facts, dates, rollout scope, benchmark results, or opinions not grounded in the provided evidence.",
-    "Write concise Korean summary text, but preserve English product names, company names, repo names, API names, and model names exactly as written.",
+    "Write Korean analysis, but preserve English product names, company names, repo names, API names, and model names exactly as written.",
     "Prefer official interpretations when the source is official.",
-    "Avoid hype language.",
+    "Avoid hype language and avoid generic claims like 'important for AI' or 'useful for developers' unless you explain the concrete mechanism.",
+    "Engineer relevance must explain what changes for APIs, tooling, workflow, infra, evals, automation, or productization.",
+    "Trend and cause/effect fields are allowed to be inferential, but they must stay tightly grounded in the supplied evidence.",
     "If evidence is thin, reflect that in uncertainty_notes instead of guessing.",
     "Return JSON only."
   ].join(" ");
 
-  const itemsPayload = input.items.map((item) => ({
-    item_id: item.itemId,
-    title: item.title,
-    section_key: item.sectionKey,
-    current_summary: item.summary,
-    current_why_important: item.whyImportant,
-    content_snippet: item.contentSnippet ?? item.description ?? "",
-    description: item.description ?? "",
-    source_label: item.sourceLabel,
-    openai_category: item.openaiCategory ?? null,
-    repo_language: item.repoLanguage ?? null,
-    repo_stars_today: item.repoStarsToday ?? null,
-    keywords: item.keywords,
-    score_reasons: item.scoreReasons,
-    primary_url: item.primaryUrl,
-    source_links: item.sourceLinks
-  }));
+  const itemsPayload = input.items.map((item) => {
+    const articleContext = getEmbeddedArticleContext(item);
+    return {
+      item_id: item.itemId,
+      title: item.title,
+      section_key: item.sectionKey,
+      deterministic_what_changed: item.whatChanged ?? item.summary,
+      deterministic_engineer_relevance: item.engineerRelevance ?? item.whyImportant,
+      deterministic_ai_ecosystem: item.aiEcosystem ?? "",
+      deterministic_trend_signal: item.trendSignal ?? "",
+      content_snippet: item.contentSnippet ?? item.description ?? "",
+      description: item.description ?? "",
+      source_label: item.sourceLabel,
+      source_type: item.sourceType,
+      item_kind: item.itemKind,
+      openai_category: item.openaiCategory ?? null,
+      repo_language: item.repoLanguage ?? null,
+      repo_stars_today: item.repoStarsToday ?? null,
+      repo_stars_total: item.repoStarsTotal ?? null,
+      keywords: item.keywords,
+      score_reasons: item.scoreReasons,
+      primary_url: item.primaryUrl,
+      source_links: item.sourceLinks,
+      evidence_bundle: {
+        headline: articleContext?.headline ?? item.title,
+        dek: articleContext?.dek ?? item.description ?? null,
+        publisher: articleContext?.publisher ?? item.sourceLabel,
+        author: articleContext?.author ?? null,
+        fetch_status: articleContext?.fetchStatus ?? "fallback",
+        key_sections: articleContext?.keySections ?? [],
+        evidence_snippets: articleContext?.evidenceSnippets ?? item.evidenceSpans ?? [],
+        clean_text_excerpt: articleContext?.cleanText ? String(articleContext.cleanText).slice(0, 5000) : ""
+      }
+    };
+  });
 
   const userPrompt = [
     `Digest mode: ${input.mode}`,
-    "Enrich every item below.",
+    "Analyze every item below.",
     "For each item, produce:",
-    "- summary_ko: one concise Korean sentence",
-    "- why_important_ko: one concise Korean sentence tailored to a user who cares about OpenAI, agents, MCP, browser automation, evals, devtools, and meaningful repos",
+    "- what_changed_ko: 2 to 3 Korean sentences describing what concretely changed",
+    "- engineer_relevance_ko: 1 to 2 Korean sentences explaining the direct engineering impact",
+    "- ai_ecosystem_ko: 1 to 2 Korean sentences explaining the ecosystem impact",
+    "- openai_angle_ko: optional, only if there is a real OpenAI angle",
+    "- trend_signal_ko: 1 Korean sentence on the larger trend",
+    "- cause_effect_ko: 1 Korean sentence on why this is happening now or what it will trigger next",
+    "- watchpoints_ko: 1 to 3 bullets for what to verify next",
+    "- evidence_spans: 2 to 4 short quotes or snippets distilled from the supplied evidence bundle",
+    "- novelty_score: 0 to 1",
+    "- insight_score: 0 to 1",
     "- confidence: 0 to 1",
     "- uncertainty_notes: empty array if evidence is strong",
     "- theme_tags: up to 6 short English tags",
     "- officialness_note: classify the item",
+    "Do not repeat the source label as the answer.",
+    "Do not write filler about why AI matters unless it is tied to the concrete item.",
     "",
     JSON.stringify(itemsPayload, null, 2)
   ].join("\n");
 
   return { systemPrompt, userPrompt };
+}
+
+function getEmbeddedArticleContext(item: DigestEntry):
+  | {
+      headline?: string;
+      dek?: string | null;
+      publisher?: string | null;
+      author?: string | null;
+      fetchStatus?: string;
+      keySections?: string[];
+      evidenceSnippets?: string[];
+      cleanText?: string;
+    }
+  | null {
+  const metadata = item.metadata as Record<string, unknown>;
+  const value = metadata.articleContext;
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  return value as {
+    headline?: string;
+    dek?: string | null;
+    publisher?: string | null;
+    author?: string | null;
+    fetchStatus?: string;
+    keySections?: string[];
+    evidenceSnippets?: string[];
+    cleanText?: string;
+  };
 }
 
 export function buildThemeSynthesisPrompts(input: { mode: DigestMode; items: DigestEntry[] }): {
@@ -57,7 +116,7 @@ export function buildThemeSynthesisPrompts(input: { mode: DigestMode; items: Dig
   const systemPrompt = [
     "You synthesize themes across a small set of already selected AI news items.",
     "Use only the supplied digest items.",
-    "Do not invent cross-item relationships unless they are directly supported by the provided summaries and score reasons.",
+    "Do not invent cross-item relationships unless they are directly supported by the provided summaries and evidence.",
     "Write concise Korean bullets, preserving English product and repo names.",
     "Avoid hype and avoid generic advice.",
     "Return JSON only."
@@ -66,11 +125,15 @@ export function buildThemeSynthesisPrompts(input: { mode: DigestMode; items: Dig
   const payload = input.items.map((item) => ({
     item_id: item.itemId,
     title: item.title,
-    summary: item.summary,
-    why_important: item.whyImportant,
+    what_changed: item.whatChanged ?? item.summary,
+    engineer_relevance: item.engineerRelevance ?? item.whyImportant,
+    ai_ecosystem: item.aiEcosystem ?? "",
+    trend_signal: item.trendSignal ?? "",
+    cause_effect: item.causeEffect ?? "",
     section_key: item.sectionKey,
     source_label: item.sourceLabel,
     keywords: item.keywords,
+    evidence_spans: item.evidenceSpans ?? [],
     score_reasons: item.scoreReasons,
     openai_category: item.openaiCategory ?? null,
     repo_language: item.repoLanguage ?? null,
@@ -109,12 +172,18 @@ export function buildFollowupAnswerPrompts(input: {
   const payload = input.items.map((item) => ({
     item_number: item.number,
     title: item.title,
-    summary: item.summary,
-    why_important: item.whyImportant,
+    what_changed: item.whatChanged ?? item.summary,
+    engineer_relevance: item.engineerRelevance ?? item.whyImportant,
+    ai_ecosystem: item.aiEcosystem ?? "",
+    openai_angle: item.openAiAngle ?? null,
+    trend_signal: item.trendSignal ?? "",
+    cause_effect: item.causeEffect ?? "",
+    watchpoints: item.watchpoints ?? [],
     source_label: item.sourceLabel,
     score_reasons: item.scoreReasons,
     keywords: item.keywords,
-    source_links: item.sourceLinks
+    source_links: item.sourceLinks,
+    evidence_spans: item.evidenceSpans ?? []
   }));
 
   const userPrompt = [
@@ -155,11 +224,17 @@ export function buildResearchAnswerPrompts(input: {
   const payload = input.items.map((item) => ({
     item_number: item.number,
     title: item.title,
-    summary: item.summary,
-    why_important: item.whyImportant,
+    what_changed: item.whatChanged ?? item.summary,
+    engineer_relevance: item.engineerRelevance ?? item.whyImportant,
+    ai_ecosystem: item.aiEcosystem ?? "",
+    openai_angle: item.openAiAngle ?? null,
+    trend_signal: item.trendSignal ?? "",
+    cause_effect: item.causeEffect ?? "",
+    watchpoints: item.watchpoints ?? [],
     source_label: item.sourceLabel,
     score_reasons: item.scoreReasons,
-    source_links: item.sourceLinks
+    source_links: item.sourceLinks,
+    evidence_spans: item.evidenceSpans ?? []
   }));
 
   const userPrompt = [

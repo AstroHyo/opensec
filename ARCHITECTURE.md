@@ -47,10 +47,94 @@ Sources
   -> signal matching
   -> SQLite state
   -> profile-aware deterministic scoring
+  -> candidate shortlist
+  -> bounded article / repo full-read
+  -> structured insight enrichment
+  -> bounded rerank delta
   -> digest builder
-  -> plain-text renderer
+  -> Telegram-oriented renderer
   -> OpenClaw / shell delivery
 ```
+
+## Tech Brief Insight Pipeline
+
+The `tech` profile no longer treats LLMs as one-line summary writers.
+
+The current intended flow is:
+
+1. deterministic retrieval and ranking
+2. bounded shortlist selection
+3. article or repo context extraction for only the shortlisted items
+4. structured insight enrichment with schema validation
+5. bounded rerank delta using novelty, insight, and evidence depth
+6. Telegram rendering with perspective-specific fields
+7. follow-up answers from saved article context plus saved enrichment
+
+Rules:
+
+- deterministic ranking remains the primary gate
+- LLMs never free-search for daily digest candidates
+- article text is treated as untrusted input
+- extraction failure degrades to snippet-based fallback instead of failing the digest
+- the main brief should be fewer and deeper rather than longer and flatter
+
+### Evidence layer
+
+The digest now persists a reusable evidence layer in `article_contexts`.
+
+This layer stores:
+
+- canonical URL
+- fetch status
+- headline and dek
+- publisher and author when available
+- cleaned article or README text
+- extracted key sections
+- evidence snippets
+- word-count depth
+
+Purpose:
+
+- let the model reason over more than `title + snippet`
+- improve `expand N` without refetching
+- support cacheable enrichment keyed by prompt version and source hash
+
+### Insight schema
+
+The tech brief now prefers a structured insight schema over generic summary fields.
+
+Primary fields:
+
+- `whatChanged`
+- `engineerRelevance`
+- `aiEcosystem`
+- `openAiAngle`
+- `trendSignal`
+- `causeEffect`
+- `watchpoints`
+- `evidenceSpans`
+
+`summary` and `whyImportant` still exist as compatibility fields, but they are no longer the editorial center of the digest.
+
+## Housing Watcher
+
+The Xiaohongshu housing watcher is a separate subsystem from the daily digest engine.
+
+It follows this shape:
+
+- broad Xiaohongshu query harvest
+- persistent browser session reuse
+- deterministic hard reject filters
+- optional OCR / LLM adjudication on bounded candidates
+- SQLite-backed watcher state
+- direct Discord DM delivery
+
+Rules:
+
+- it must not change digest ranking or digest source selection
+- it may use LLMs only on bounded post batches after deterministic filtering
+- it must preserve original note URLs, query provenance, and decision reasons
+- it should degrade to rules-only behavior if LLM or vision steps fail
 
 ## Profiles
 
@@ -68,6 +152,7 @@ These stay global because they represent raw or canonical evidence:
 - `raw_items`
 - `normalized_items`
 - `item_sources`
+- `article_contexts`
 - `signal_events`
 - `signal_event_matches`
 
@@ -184,6 +269,19 @@ Bootstrap files now have stricter separation:
 - `memory/YYYY-MM-DD.md`: raw notes
 - `HEARTBEAT.md`: heartbeat-only behavior
 
+## Private Specialist Workspaces
+
+When a specialist agent needs a non-public personality, private operating rules, or owner-specific data, use a workspace outside the OpenSec repo.
+
+Pattern:
+
+- public repo contains only a safe scaffold and bootstrap
+- private workspace contains the real `SOUL.md`, `AGENTS.md`, `MEMORY.md`, `HEARTBEAT.md`, and private skills
+- secrets and private data stay in the private workspace only
+- the private workspace must not be copied into `workspace-template/`
+
+This pattern is appropriate for agents such as a private training or nutrition assistant whose behavior and memory should not be shared in git.
+
 ## Memory Loop
 
 Discord conversation memory should use a two-stage loop:
@@ -227,5 +325,8 @@ When enabled, heartbeat must stay low-noise and non-mutating.
 - `AGENTS.md`
 - `docs/design-docs/openclaw-personal-control-plane.md`
 - `docs/exec-plans/active/2026-04-08-discord-personal-control-plane-v1-1.md`
+- `docs/exec-plans/active/2026-04-08-training-bot-private-workspace-rollout.md`
+- `docs/exec-plans/active/2026-04-10-xiaohongshu-sf-rent-watcher.md`
 - `docs/product-specs/discord-personal-control-plane.md`
+- `docs/product-specs/training-bot-private-workspace.md`
 - `docs/generated/db-schema.md`

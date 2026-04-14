@@ -211,13 +211,26 @@ export interface DigestEntry {
   number: number;
   itemId: number;
   sectionKey: string;
+  sourceType: SourceType;
+  itemKind: ItemKind;
   title: string;
   summary: string;
   whyImportant: string;
+  whatChanged?: string;
+  engineerRelevance?: string;
+  aiEcosystem?: string;
+  openAiAngle?: string | null;
+  trendSignal?: string;
+  causeEffect?: string;
+  watchpoints?: string[];
+  evidenceSpans?: string[];
   contentSnippet?: string | null;
   primaryUrl: string;
   sourceLabel: string;
   score: number;
+  deterministicScore?: number;
+  rerankDelta?: number;
+  finalScore?: number;
   scoreReasons: string[];
   sourceLinks: Array<{ label: string; url: string }>;
   signalLinks?: Array<{ label: string; url: string }>;
@@ -250,6 +263,7 @@ export interface DigestBuildResult {
   sections: DigestSection[];
   themes: string[];
   items: DigestEntry[];
+  candidateEntries?: DigestEntry[];
   bodyText: string;
   stats: Record<string, unknown>;
 }
@@ -294,6 +308,16 @@ export interface ItemEnrichmentRecord {
   sourceHash: string;
   summaryKo: string;
   whyImportantKo: string;
+  whatChangedKo?: string | null;
+  engineerRelevanceKo?: string | null;
+  aiEcosystemKo?: string | null;
+  openAiAngleKo?: string | null;
+  trendSignalKo?: string | null;
+  causeEffectKo?: string | null;
+  watchpoints: string[];
+  evidenceSpans: string[];
+  noveltyScore?: number | null;
+  insightScore?: number | null;
   confidence: number;
   uncertaintyNotes: string[];
   themeTags: string[];
@@ -310,6 +334,24 @@ export interface DigestThemeEnrichmentRecord {
   promptVersion: string;
   themes: string[];
   createdAt: string;
+}
+
+export interface ArticleContextRecord {
+  id: number;
+  itemId: number;
+  sourceHash: string;
+  canonicalUrl: string;
+  fetchStatus: "ok" | "fallback" | "error";
+  publisher?: string | null;
+  author?: string | null;
+  publishedAt?: string | null;
+  headline: string;
+  dek?: string | null;
+  cleanText: string;
+  keySections: string[];
+  evidenceSnippets: string[];
+  wordCount: number;
+  fetchedAt: string;
 }
 
 export interface BlueskyWatchActor {
