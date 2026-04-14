@@ -48,22 +48,37 @@ flowchart LR
     C --> D["Deduplicate and merge"]
     D --> E[("SQLite state")]
     E --> F["Deterministic scoring"]
-    F --> G["Digest shortlist"]
-    G --> H["Plain-text digest renderer"]
-    G --> I["Optional LLM enrichment"]
-    I --> H
-    H --> J["Discord, Telegram, or shell output"]
-    E --> K["Stored follow-up context"]
-    K --> L["Deterministic follow-up"]
-    K --> M["Ask mode"]
-    K --> N["Research mode"]
+    F --> G["최근 72시간 suppression gate"]
+    G --> H["Digest shortlist"]
+    H --> I["원문 / README evidence extraction"]
+    I --> J["Task router"]
+    J --> K["Tier 1: Grok fast reasoning"]
+    J --> L["Tier 2: GPT-4.1"]
+    J --> M["Tier 3: GPT-5.4 mini"]
+    K --> N["구조화 enrichment / synthesis"]
+    L --> N
+    M --> O["명시적 research 전용"]
+    N --> P["Plain-text digest renderer"]
+    O --> Q["Research answer renderer"]
+    P --> R["Discord, Telegram, or shell output"]
+    E --> S["Stored follow-up context"]
+    E --> T["LLM run telemetry / cost history"]
+    T --> J
+    J --> U["Budget guard / fallback policy"]
+    S --> V["Deterministic follow-up"]
+    S --> W["Ask mode"]
+    S --> X["Research mode"]
+    U --> N
+    U --> O
 ```
 
 중요한 경계는 LLM의 위치입니다.
 
 - retrieval은 deterministic하게 유지합니다.
+- 최근 72시간 중복 억제는 section assembly 전에 처리합니다.
 - candidate generation은 bounded set으로 제한합니다.
-- enrichment는 scoring 이후에만 붙습니다.
+- enrichment는 scoring과 evidence extraction 이후에만 붙습니다.
+- 모델 선택은 호출 위치가 아니라 task tier로 결정합니다.
 - enrichment 실패가 delivery를 막으면 안 됩니다.
 
 ## 전체 아키텍처
@@ -81,9 +96,13 @@ flowchart TB
         U["src/util/"]
         DB["src/db.ts + SQLite"]
         SC["src/scoring.ts"]
+        SUP["72h suppression gate"]
+        EV["src/evidence/"]
         DG["src/digest/"]
         CM["src/commands/"]
-        LLM["src/llm/ (optional)"]
+        TR["src/llm/taskRouter.ts"]
+        LLM["src/llm/ providers + prompts"]
+        TL["llm_runs telemetry + budget checks"]
     end
 
     subgraph Control["Discord / OpenClaw layer"]
@@ -99,9 +118,15 @@ flowchart TB
     SA --> U
     U --> DB
     DB --> SC
-    SC --> DG
-    SC --> LLM
+    SC --> SUP
+    SUP --> DG
+    SUP --> EV
+    EV --> TR
+    DB --> TR
+    TR --> LLM
     LLM --> DG
+    LLM --> TL
+    TL --> TR
     DB --> CM
     DG --> CM
     CM --> OC

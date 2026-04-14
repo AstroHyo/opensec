@@ -48,22 +48,37 @@ flowchart LR
     C --> D["Deduplicate and merge"]
     D --> E[("SQLite state")]
     E --> F["Deterministic scoring"]
-    F --> G["Digest shortlist"]
-    G --> H["Plain-text digest renderer"]
-    G --> I["Optional LLM enrichment"]
-    I --> H
-    H --> J["Discord, Telegram, or shell output"]
-    E --> K["Stored follow-up context"]
-    K --> L["Deterministic follow-up"]
-    K --> M["Ask mode"]
-    K --> N["Research mode"]
+    F --> G["Recent 72h suppression gate"]
+    G --> H["Digest shortlist"]
+    H --> I["Full-read evidence extraction"]
+    I --> J["Task router"]
+    J --> K["Tier 1: Grok fast reasoning"]
+    J --> L["Tier 2: GPT-4.1"]
+    J --> M["Tier 3: GPT-5.4 mini"]
+    K --> N["Structured enrichment or synthesis"]
+    L --> N
+    M --> O["Explicit research only"]
+    N --> P["Plain-text digest renderer"]
+    O --> Q["Research answer renderer"]
+    P --> R["Discord, Telegram, or shell output"]
+    E --> S["Stored follow-up context"]
+    E --> T["LLM run telemetry and cost history"]
+    T --> J
+    J --> U["Budget guard and fallback policy"]
+    S --> V["Deterministic follow-up"]
+    S --> W["Ask mode"]
+    S --> X["Research mode"]
+    U --> N
+    U --> O
 ```
 
 The important boundary is the placement of the LLM layer:
 
 - retrieval stays deterministic
+- recent 72h duplicate suppression happens before section assembly
 - candidate generation stays bounded
-- enrichment happens downstream of scoring
+- enrichment happens downstream of scoring and evidence extraction
+- model selection is routed by task tier, not by ad hoc call-site choices
 - delivery still works when enrichment is unavailable
 
 ## System Architecture
@@ -81,9 +96,13 @@ flowchart TB
         U["src/util/"]
         DB["src/db.ts + SQLite"]
         SC["src/scoring.ts"]
+        SUP["72h suppression gate"]
+        EV["src/evidence/"]
         DG["src/digest/"]
         CM["src/commands/"]
-        LLM["src/llm/ (optional)"]
+        TR["src/llm/taskRouter.ts"]
+        LLM["src/llm/ providers + prompts"]
+        TL["llm_runs telemetry + budget checks"]
     end
 
     subgraph Control["Discord / OpenClaw layer"]
@@ -99,9 +118,15 @@ flowchart TB
     SA --> U
     U --> DB
     DB --> SC
-    SC --> DG
-    SC --> LLM
+    SC --> SUP
+    SUP --> DG
+    SUP --> EV
+    EV --> TR
+    DB --> TR
+    TR --> LLM
     LLM --> DG
+    LLM --> TL
+    TL --> TR
     DB --> CM
     DG --> CM
     CM --> OC
