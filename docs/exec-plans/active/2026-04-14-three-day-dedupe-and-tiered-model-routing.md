@@ -212,6 +212,91 @@ Proposed config:
 - `NEWS_BOT_LLM_MODEL_TIER_SMALL`
 - `NEWS_BOT_LLM_MODEL_TIER_MEDIUM`
 - `NEWS_BOT_LLM_MODEL_TIER_DEEP`
+- `NEWS_BOT_LLM_TIMEOUT_TIER_SMALL_MS`
+- `NEWS_BOT_LLM_TIMEOUT_TIER_MEDIUM_MS`
+- `NEWS_BOT_LLM_TIMEOUT_TIER_DEEP_MS`
+
+### Initial default model mapping
+
+Start conservative and close to the models we already use successfully.
+
+- Tier 1 default: `gpt-4.1-mini`
+- Tier 2 default: `gpt-4.1`
+- Tier 3 default: `gpt-5.4-mini`
+
+Rationale:
+
+- Tier 1 is the high-volume path, so cost and latency dominate
+- Tier 2 is lower-volume but more synthesis-heavy
+- Tier 3 is explicit operator-triggered research only, so we can spend more when needed
+
+Optional later:
+
+- allow explicit deep escalation from Tier 3 default to a larger research model only for manual operator requests
+- keep that escalation out of the scheduled digest path
+
+### Grok provider review
+
+Grok is a viable second provider, but it should enter through tiered routing rather than as a global swap.
+
+Current official signals worth noting:
+
+- xAI documents a cost-efficient lightweight model family, including `grok-4-1-fast-reasoning`, and positions it as strong at tool calling
+- xAI also supports strict structured outputs and OpenAI-compatible Responses API usage
+- xAI exposes higher-end reasoning models such as `grok-4.20-reasoning`, but those should be treated as premium paths, not default scheduled-digest models
+
+Recommended stance:
+
+- keep OpenAI as the default provider while we add the routing abstraction
+- add xAI as an optional provider in the router
+- evaluate Grok first on Tier 1 tasks where the upside is biggest and blast radius is smallest
+
+Initial provider recommendation:
+
+- Tier 1:
+  - default: `openai:gpt-4.1-mini`
+  - candidate alt: `xai:grok-4-1-fast-reasoning`
+- Tier 2:
+  - default: `openai:gpt-4.1`
+  - candidate alt: `xai:grok-4.20-reasoning` only if quality clearly beats cost
+- Tier 3:
+  - default: `openai:gpt-5.4-mini`
+  - keep Grok optional for later manual research experiments, not default
+
+Why this split:
+
+- Tier 1 is where Grok is most attractive on paper because the work is high-volume, bounded, and schema-driven
+- Tier 2 and Tier 3 are where output quality, synthesis stability, and operator trust matter more than raw token price
+- scheduled digest paths should avoid provider churn until we have fixture-based evaluation results
+
+### Grok evaluation gate
+
+Before Grok becomes a default tier provider, it must pass the same digest-specific checks:
+
+- strict JSON schema compliance
+- low genericness on `what_changed`, `engineer_relevance`, and `trend_signal`
+- no increase in hallucinated mechanism claims
+- no regression in Korean clarity
+- no timeout increase on scheduled digest paths
+
+The first rollout should therefore be:
+
+1. router supports provider-qualified model ids
+2. Tier 1 can opt into `xai:grok-4-1-fast-reasoning`
+3. run fixture previews and compare against OpenAI outputs
+4. promote only if quality and cost both improve enough
+
+### Initial timeout policy
+
+- Tier 1: `20_000` ms
+- Tier 2: `30_000` ms
+- Tier 3: `60_000` ms
+
+Rules:
+
+- Tier 1 timeout should silently fall back on scheduled paths
+- Tier 2 timeout may degrade to deterministic theme output
+- Tier 3 timeout should return a partial answer with explicit uncertainty instead of silently hiding the failure
 
 Optional later:
 
@@ -245,8 +330,18 @@ And return:
 - `theme_synthesis_am` -> Tier 1
 - `theme_synthesis_pm` -> Tier 2
 - `followup_answer` -> Tier 1
+- `today_themes` -> Tier 2
 - `followup_research` -> Tier 3
 - future `rerank_delta` LLM step -> Tier 1 only
+
+### Dynamic downgrade / upgrade rules
+
+The first version should stay simple, but we can still make a few bounded decisions:
+
+- if PM synthesis has only 2 or 3 strong items, allow Tier 1 instead of Tier 2
+- if a short follow-up references many items or asks for cross-item synthesis, upgrade from Tier 1 to Tier 2
+- never auto-upgrade scheduled digest jobs from Tier 1 or Tier 2 into Tier 3
+- only explicit research paths may enter Tier 3
 
 ### Persistence and observability
 
