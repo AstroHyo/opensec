@@ -1,10 +1,17 @@
 import type { DigestBuildResult, DigestEntry } from "../types.js";
+import type { ExternalLinkStyle } from "../util/links.js";
+import { formatExternalLink } from "../util/links.js";
 import { collapseWhitespace } from "../util/text.js";
 
-export function renderTelegramDigest(result: DigestBuildResult): string {
+interface RenderTelegramDigestOptions {
+  linkStyle?: ExternalLinkStyle;
+}
+
+export function renderTelegramDigest(result: DigestBuildResult, options: RenderTelegramDigestOptions = {}): string {
   const lines: string[] = [result.header, ""];
   const renderedItems: DigestEntry[] = [];
   let sectionIndex = 1;
+  const linkStyle = options.linkStyle ?? "plain";
 
   for (const section of result.sections) {
     if (section.items.length === 0 && (!section.bullets || section.bullets.length === 0)) {
@@ -34,7 +41,7 @@ export function renderTelegramDigest(result: DigestBuildResult): string {
 
     for (const item of dedupeRenderedItems(renderedItems)) {
       lines.push(formatItemLine(item));
-      lines.push(item.primaryUrl);
+      lines.push(formatExternalLink(item.primaryUrl, linkStyle));
       lines.push("");
     }
   }

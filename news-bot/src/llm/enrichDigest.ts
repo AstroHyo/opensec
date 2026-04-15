@@ -53,7 +53,9 @@ export async function maybeEnrichDigest(input: {
     await enrichThemes(input.db, input.config, input.digest, input.now);
   }
 
-  input.digest.bodyText = renderTelegramDigest(input.digest);
+  input.digest.bodyText = renderTelegramDigest(input.digest, {
+    linkStyle: input.config.rendering.linkStyle
+  });
 }
 
 async function enrichItems(
@@ -96,114 +98,121 @@ async function enrichItems(
     return;
   }
 
-  const inputHash = sha256Hex(
-    JSON.stringify(
-      missing.map((item) => ({
-        itemId: item.itemId,
-        sourceHash: buildItemSourceHash(item, contexts.get(item.itemId) ?? null)
-      }))
-    )
-  );
-  const startedAt = now.toUTC().toISO() ?? new Date().toISOString();
-  const startedMillis = Date.now();
-  const runId = db.startLlmRun({
-    profileKey: items[0]?.profileKey ?? "tech",
-    runType: route.runType,
-    taskKey: route.taskKey,
-    taskTier: route.tier,
-    provider: route.provider,
-    modelName: route.model,
-    promptVersion: ITEM_ENRICHMENT_PROMPT_VERSION,
-    inputHash,
-    startedAt
-  });
+  const batchSize = resolveItemEnrichmentBatchSize(config, route.provider);
+  const timeoutMs = resolveItemEnrichmentTimeoutMs(config, route.timeoutMs, route.provider);
 
-  try {
-    const prompts = buildItemEnrichmentPrompts({ mode, items: missing });
-    const response = await generateStructuredJson({
-      apiKey: route.apiKey,
+  for (const batch of chunkItems(missing, batchSize)) {
+    const inputHash = sha256Hex(
+      JSON.stringify(
+        batch.map((item) => ({
+          itemId: item.itemId,
+          sourceHash: buildItemSourceHash(item, contexts.get(item.itemId) ?? null)
+        }))
+      )
+    );
+    const startedAt = new Date().toISOString();
+    const startedMillis = Date.now();
+    const runId = db.startLlmRun({
+      profileKey: items[0]?.profileKey ?? "tech",
+      runType: route.runType,
+      taskKey: route.taskKey,
+      taskTier: route.tier,
       provider: route.provider,
-      model: route.model,
-      schemaName: "item_enrichment_batch",
-      schema: itemEnrichmentJsonSchema,
-      validator: itemEnrichmentBatchSchema,
-      systemPrompt: prompts.systemPrompt,
-      userPrompt: prompts.userPrompt,
-      timeoutMs: route.timeoutMs
+      modelName: route.model,
+      promptVersion: ITEM_ENRICHMENT_PROMPT_VERSION,
+      inputHash,
+      startedAt
     });
 
-    const byId = new Map(response.data.items.map((item) => [item.item_id, item] as const));
-    let savedCount = 0;
-
-    for (const item of missing) {
-      const enrichment = byId.get(item.itemId);
-      if (!enrichment) {
-        continue;
-      }
-
-      const fallbackWhatChanged = item.whatChanged ?? item.summary;
-      const fallbackEngineerRelevance = item.engineerRelevance ?? item.whyImportant;
-      const fallbackAiEcosystem = item.aiEcosystem ?? item.whyImportant;
-      const fallbackTrendSignal = item.trendSignal ?? item.causeEffect ?? item.whyImportant;
-      const fallbackCauseEffect = item.causeEffect ?? item.trendSignal ?? item.whyImportant;
-      const repoUseCase = item.itemKind === "repo"
-        ? preferOptionalKoreanNarrative(enrichment.repo_use_case_ko, 240) ?? buildRepoUseCaseFallback(item)
-        : null;
-
-      const saved = db.saveItemEnrichment({
-        profileKey: item.profileKey,
-        itemId: item.itemId,
-        llmRunId: runId,
-        promptVersion: ITEM_ENRICHMENT_PROMPT_VERSION,
-        sourceHash: buildItemSourceHash(item, contexts.get(item.itemId) ?? null),
-        summaryKo: preferKoreanNarrative(enrichment.what_changed_ko, fallbackWhatChanged, 220),
-        whyImportantKo: preferKoreanNarrative(
-          [enrichment.engineer_relevance_ko, enrichment.ai_ecosystem_ko].map((value) => collapseWhitespace(value)).join(" "),
-          `${fallbackEngineerRelevance} ${fallbackAiEcosystem}`,
-          220
-        ),
-        whatChangedKo: preferKoreanNarrative(enrichment.what_changed_ko, fallbackWhatChanged, 420),
-        engineerRelevanceKo: preferKoreanNarrative(enrichment.engineer_relevance_ko, fallbackEngineerRelevance, 240),
-        aiEcosystemKo: preferKoreanNarrative(enrichment.ai_ecosystem_ko, fallbackAiEcosystem, 220),
-        openAiAngleKo: preferOptionalKoreanNarrative(enrichment.openai_angle_ko, 180),
-        repoUseCaseKo: repoUseCase,
-        trendSignalKo: preferKoreanNarrative(enrichment.trend_signal_ko, fallbackTrendSignal, 180),
-        causeEffectKo: preferKoreanNarrative(enrichment.cause_effect_ko, fallbackCauseEffect, 180),
-        watchpoints: sanitizeNarrativeList(enrichment.watchpoints_ko, 3, 120),
-        evidenceSpans: sanitizeNarrativeList(enrichment.evidence_spans, 4, 180),
-        noveltyScore: enrichment.novelty_score,
-        insightScore: enrichment.insight_score,
-        confidence: enrichment.confidence,
-        uncertaintyNotes: sanitizeNarrativeList(enrichment.uncertainty_notes, 3, 110),
-        themeTags: enrichment.theme_tags.map((value) => truncate(collapseWhitespace(value), 32)),
-        officialnessNote: enrichment.officialness_note,
-        createdAt: now.toUTC().toISO() ?? new Date().toISOString()
-      });
-      applyItemEnrichment(item, saved);
-      savedCount += 1;
-    }
-
-    db.finishLlmRun({
-      runId,
-      status: savedCount === missing.length ? "ok" : "partial",
-      completedAt: now.toUTC().toISO() ?? new Date().toISOString(),
-      latencyMs: Date.now() - startedMillis,
-      tokenUsage: response.usage ?? null,
-      estimatedCostUsd: estimateLlmCostUsd({
+    try {
+      const prompts = buildItemEnrichmentPrompts({ mode, items: batch });
+      const response = await generateStructuredJson({
+        apiKey: route.apiKey,
         provider: route.provider,
         model: route.model,
-        usage: response.usage ?? null
-      }),
-      errorText: savedCount === missing.length ? null : `Only enriched ${savedCount}/${missing.length} items`
-    });
-  } catch (error) {
-    db.finishLlmRun({
-      runId,
-      status: "error",
-      completedAt: now.toUTC().toISO() ?? new Date().toISOString(),
-      latencyMs: Date.now() - startedMillis,
-      errorText: error instanceof Error ? error.message : String(error)
-    });
+        schemaName: "item_enrichment_batch",
+        schema: itemEnrichmentJsonSchema,
+        validator: itemEnrichmentBatchSchema,
+        systemPrompt: prompts.systemPrompt,
+        userPrompt: prompts.userPrompt,
+        timeoutMs
+      });
+
+      const byId = new Map(response.data.items.map((item) => [item.item_id, item] as const));
+      let savedCount = 0;
+
+      for (const item of batch) {
+        const enrichment = byId.get(item.itemId);
+        if (!enrichment) {
+          continue;
+        }
+
+        const fallbackWhatChanged = item.whatChanged ?? item.summary;
+        const fallbackEngineerRelevance = item.engineerRelevance ?? item.whyImportant;
+        const fallbackAiEcosystem = item.aiEcosystem ?? item.whyImportant;
+        const fallbackTrendSignal = item.trendSignal ?? item.causeEffect ?? item.whyImportant;
+        const fallbackCauseEffect = item.causeEffect ?? item.trendSignal ?? item.whyImportant;
+        const repoUseCase = item.itemKind === "repo"
+          ? preferOptionalKoreanNarrative(enrichment.repo_use_case_ko, 240) ?? buildRepoUseCaseFallback(item)
+          : null;
+
+        const saved = db.saveItemEnrichment({
+          profileKey: item.profileKey,
+          itemId: item.itemId,
+          llmRunId: runId,
+          promptVersion: ITEM_ENRICHMENT_PROMPT_VERSION,
+          sourceHash: buildItemSourceHash(item, contexts.get(item.itemId) ?? null),
+          summaryKo: preferKoreanNarrative(enrichment.what_changed_ko, fallbackWhatChanged, 220),
+          whyImportantKo: preferKoreanNarrative(
+            [enrichment.engineer_relevance_ko, enrichment.ai_ecosystem_ko]
+              .map((value) => collapseWhitespace(value))
+              .join(" "),
+            `${fallbackEngineerRelevance} ${fallbackAiEcosystem}`,
+            220
+          ),
+          whatChangedKo: preferKoreanNarrative(enrichment.what_changed_ko, fallbackWhatChanged, 420),
+          engineerRelevanceKo: preferKoreanNarrative(enrichment.engineer_relevance_ko, fallbackEngineerRelevance, 240),
+          aiEcosystemKo: preferKoreanNarrative(enrichment.ai_ecosystem_ko, fallbackAiEcosystem, 220),
+          openAiAngleKo: preferOptionalKoreanNarrative(enrichment.openai_angle_ko, 180),
+          repoUseCaseKo: repoUseCase,
+          trendSignalKo: preferKoreanNarrative(enrichment.trend_signal_ko, fallbackTrendSignal, 180),
+          causeEffectKo: preferKoreanNarrative(enrichment.cause_effect_ko, fallbackCauseEffect, 180),
+          watchpoints: sanitizeNarrativeList(enrichment.watchpoints_ko, 3, 120),
+          evidenceSpans: sanitizeNarrativeList(enrichment.evidence_spans, 4, 180),
+          noveltyScore: enrichment.novelty_score,
+          insightScore: enrichment.insight_score,
+          confidence: enrichment.confidence,
+          uncertaintyNotes: sanitizeNarrativeList(enrichment.uncertainty_notes, 3, 110),
+          themeTags: enrichment.theme_tags.map((value) => truncate(collapseWhitespace(value), 32)),
+          officialnessNote: enrichment.officialness_note,
+          createdAt: new Date().toISOString()
+        });
+        applyItemEnrichment(item, saved);
+        savedCount += 1;
+      }
+
+      db.finishLlmRun({
+        runId,
+        status: savedCount === batch.length ? "ok" : "partial",
+        completedAt: new Date().toISOString(),
+        latencyMs: Date.now() - startedMillis,
+        tokenUsage: response.usage ?? null,
+        estimatedCostUsd: estimateLlmCostUsd({
+          provider: route.provider,
+          model: route.model,
+          usage: response.usage ?? null
+        }),
+        errorText: savedCount === batch.length ? null : `Only enriched ${savedCount}/${batch.length} items`
+      });
+    } catch (error) {
+      db.finishLlmRun({
+        runId,
+        status: "error",
+        completedAt: new Date().toISOString(),
+        latencyMs: Date.now() - startedMillis,
+        errorText: error instanceof Error ? error.message : String(error)
+      });
+    }
   }
 }
 
@@ -304,6 +313,34 @@ async function enrichThemes(
 
 function startedIso(now: DateTime): string {
   return now.toUTC().toISO() ?? new Date().toISOString();
+}
+
+function resolveItemEnrichmentBatchSize(config: AppConfig, provider: string): number {
+  if (config.llm.itemEnrichmentBatchSize != null) {
+    return Math.max(1, config.llm.itemEnrichmentBatchSize);
+  }
+
+  return provider === "xai" ? 1 : 4;
+}
+
+function resolveItemEnrichmentTimeoutMs(config: AppConfig, defaultTimeoutMs: number, provider: string): number {
+  if (config.llm.itemEnrichmentTimeoutMs != null) {
+    return config.llm.itemEnrichmentTimeoutMs;
+  }
+
+  if (provider === "xai") {
+    return Math.max(defaultTimeoutMs, 60_000);
+  }
+
+  return Math.max(defaultTimeoutMs, 30_000);
+}
+
+function chunkItems<T>(items: T[], chunkSize: number): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += chunkSize) {
+    chunks.push(items.slice(index, index + chunkSize));
+  }
+  return chunks;
 }
 
 export function buildItemSourceHash(item: DigestEntry, articleContext?: ArticleContextRecord | null): string {

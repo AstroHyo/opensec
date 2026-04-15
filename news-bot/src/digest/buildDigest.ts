@@ -140,7 +140,9 @@ export function buildDigest({ db, config, profileKey, mode, now }: BuildDigestPa
     }
   };
 
-  result.bodyText = renderTelegramDigest(result);
+  result.bodyText = renderTelegramDigest(result, {
+    linkStyle: config.rendering.linkStyle
+  });
   return result;
 }
 

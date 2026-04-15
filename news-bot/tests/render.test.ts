@@ -184,4 +184,56 @@ describe("telegram escaping", () => {
     expect(rendered).toContain("OpenSec에서는 이 repo를 별도 실험 흐름에 붙여");
     expect(rendered).toContain("[3] mvschwarz/openrig | TypeScript | +1200 today");
   });
+
+  it("wraps bottom links safely for discord when configured", () => {
+    const digest: DigestBuildResult = {
+      profileKey: "tech",
+      mode: "am",
+      header: "[AM AI Brief | 2026-04-15 ET]",
+      window: {
+        mode: "am",
+        startUtc: "2026-04-15T10:00:00Z",
+        endUtc: "2026-04-15T14:00:00Z",
+        dateLabel: "2026-04-15"
+      },
+      sections: [
+        {
+          key: "top_signals",
+          title: "Top Signals",
+          items: [
+            {
+              profileKey: "tech",
+              number: 1,
+              itemId: 99,
+              sectionKey: "top_signals",
+              sourceType: "openai_official",
+              itemKind: "product",
+              title: "Trusted access",
+              summary: "요약",
+              whyImportant: "중요성",
+              whatChanged: "OpenAI가 보안 프로그램 범위를 넓혔습니다.",
+              engineerRelevance: "접근 통제와 로깅 기준을 다시 봐야 합니다.",
+              aiEcosystem: "보안 배포 경계가 더 촘촘해집니다.",
+              trendSignal: "보안 capability 공개가 곧 운영 정책 변경으로 이어지고 있습니다.",
+              primaryUrl: "https://openai.com/index/scaling-trusted-access-for-cyber-defense",
+              sourceLabel: "OpenAI / Security",
+              score: 95,
+              scoreReasons: ["OpenAI 공식 소스"],
+              sourceLinks: [{ label: "OpenAI / Security", url: "https://openai.com/index/scaling-trusted-access-for-cyber-defense" }],
+              keywords: ["OpenAI", "security"],
+              metadata: {}
+            }
+          ]
+        }
+      ],
+      themes: [],
+      items: [],
+      bodyText: "",
+      stats: {}
+    };
+
+    const rendered = renderTelegramDigest(digest, { linkStyle: "discord_safe" });
+    expect(rendered).toContain("<https://openai.com/index/scaling-trusted-access-for-cyber-defense>");
+    expect(rendered).not.toContain("링크:");
+  });
 });

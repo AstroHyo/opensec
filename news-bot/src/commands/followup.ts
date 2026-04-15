@@ -2,6 +2,7 @@ import { DateTime } from "luxon";
 import { loadConfig } from "../config.js";
 import { NewsDatabase } from "../db.js";
 import type { DigestEntry, ProfileKey } from "../types.js";
+import { formatExternalLink } from "../util/links.js";
 import { answerAskFollowup } from "./followupAnswer.js";
 import { classifyFollowupIntent } from "./followupIntent.js";
 import { answerResearchFollowup } from "./followupResearch.js";
@@ -32,14 +33,14 @@ export async function runFollowupCommand(input: {
     if (command === "pm brief now") {
       return await renderFreshDigest(profileKey, "pm", input);
     }
-    const deterministic = tryDeterministicCommand(command, profileKey, db);
+    const deterministic = tryDeterministicCommand(command, profileKey, db, config.rendering.linkStyle);
     if (deterministic) {
       return deterministic;
     }
 
     const intent = classifyFollowupIntent(rawCommand);
     if (intent.kind === "deterministic_command") {
-      const routed = tryDeterministicCommand(intent.command, profileKey, db);
+      const routed = tryDeterministicCommand(intent.command, profileKey, db, config.rendering.linkStyle);
       if (routed) {
         return routed;
       }
@@ -97,12 +98,17 @@ function normalizeCommand(command: string): string {
   return command.trim().replace(/^\//, "").toLowerCase();
 }
 
-function tryDeterministicCommand(command: string, profileKey: ProfileKey, db: NewsDatabase): string | null {
+function tryDeterministicCommand(
+  command: string,
+  profileKey: ProfileKey,
+  db: NewsDatabase,
+  linkStyle: "plain" | "discord_safe"
+): string | null {
   if (command === "openai only") {
-    return renderSubset("OpenAI only", ensureLatestDigestItems(profileKey, db), (item) => Boolean(item.openaiCategory));
+    return renderSubset("OpenAI only", ensureLatestDigestItems(profileKey, db), (item) => Boolean(item.openaiCategory), linkStyle);
   }
   if (command === "repo radar") {
-    return renderSubset("Repo Radar", ensureLatestDigestItems(profileKey, db), (item) => item.repoStarsToday != null);
+    return renderSubset("Repo Radar", ensureLatestDigestItems(profileKey, db), (item) => item.repoStarsToday != null, linkStyle);
   }
   if (command === "today themes") {
     const digest = db.getLatestDigest(profileKey);
@@ -114,13 +120,13 @@ function tryDeterministicCommand(command: string, profileKey: ProfileKey, db: Ne
   const expandMatch = command.match(/^expand\s+(\d+)$/);
   if (expandMatch) {
     const item = db.getFollowupContext(profileKey, Number.parseInt(expandMatch[1], 10));
-    return item ? renderExpandedItem(item, db) : notFound(expandMatch[1]);
+    return item ? renderExpandedItem(item, db, linkStyle) : notFound(expandMatch[1]);
   }
 
   const sourceMatch = command.match(/^show sources for\s+(\d+)$/);
   if (sourceMatch) {
     const item = db.getFollowupContext(profileKey, Number.parseInt(sourceMatch[1], 10));
-    return item ? renderSources(item, db) : notFound(sourceMatch[1]);
+    return item ? renderSources(item, db, linkStyle) : notFound(sourceMatch[1]);
   }
 
   const whyMatch = command.match(/^why important\s+(\d+)$/);
@@ -137,7 +143,12 @@ function ensureLatestDigestItems(profileKey: ProfileKey, db: NewsDatabase): Dige
   return latest?.items ?? [];
 }
 
-function renderSubset(title: string, items: DigestEntry[], predicate: (item: DigestEntry) => boolean): string {
+function renderSubset(
+  title: string,
+  items: DigestEntry[],
+  predicate: (item: DigestEntry) => boolean,
+  linkStyle: "plain" | "discord_safe"
+): string {
   const selected = items.filter(predicate);
   if (selected.length === 0) {
     return `${title}로 보여줄 저장된 항목이 없습니다. 먼저 \`brief now\`를 실행하세요.`;
@@ -152,14 +163,14 @@ function renderSubset(title: string, items: DigestEntry[], predicate: (item: Dig
             `[${item.number}] ${item.title}`,
             `한줄 요약: ${item.summary}`,
             `출처: ${item.sourceLabel}`,
-            `링크: ${item.primaryUrl}`
+            `링크: ${formatExternalLink(item.primaryUrl, linkStyle)}`
           ].join("\n")
         : [
             `[${item.number}] ${item.title}`,
             `무슨 일: ${item.whatChanged ?? item.summary}`,
             item.repoUseCase ? `활용 포인트: ${item.repoUseCase}` : null,
             `변화 신호: ${item.trendSignal ?? item.causeEffect ?? item.whyImportant}`,
-            `링크: ${item.primaryUrl}`
+            `링크: ${formatExternalLink(item.primaryUrl, linkStyle)}`
           ]
             .filter((value): value is string => Boolean(value))
             .join("\n")
@@ -167,7 +178,7 @@ function renderSubset(title: string, items: DigestEntry[], predicate: (item: Dig
   ].join("\n\n");
 }
 
-function renderExpandedItem(item: DigestEntry, db: NewsDatabase): string {
+function renderExpandedItem(item: DigestEntry, db: NewsDatabase, linkStyle: "plain" | "discord_safe"): string {
   const articleContext = getStoredArticleContext(item, db);
   const evidence = uniqueLines([...(item.evidenceSpans ?? []), ...(articleContext?.evidenceSnippets ?? [])]).slice(0, 3);
   const watchpoints = uniqueLines(item.watchpoints ?? []).slice(0, 3);
@@ -184,13 +195,13 @@ function renderExpandedItem(item: DigestEntry, db: NewsDatabase): string {
     evidence.length ? `근거 스니펫:\n${evidence.map((point) => `- ${point}`).join("\n")}` : null,
     item.uncertaintyNotes?.length ? `불확실성 메모: ${item.uncertaintyNotes.join(" / ")}` : null,
     articleContext?.headline && articleContext.headline !== item.title ? `원문 헤드라인: ${articleContext.headline}` : null,
-    `주요 링크: ${item.primaryUrl}`
+    `주요 링크: ${formatExternalLink(item.primaryUrl, linkStyle)}`
   ]
     .filter((value): value is string => Boolean(value))
     .join("\n");
 }
 
-function renderSources(item: DigestEntry, db: NewsDatabase): string {
+function renderSources(item: DigestEntry, db: NewsDatabase, linkStyle: "plain" | "discord_safe"): string {
   const articleContext = getStoredArticleContext(item, db);
   const evidence = uniqueLines([...(item.evidenceSpans ?? []), ...(articleContext?.evidenceSnippets ?? [])]).slice(0, 4);
 
@@ -199,11 +210,13 @@ function renderSources(item: DigestEntry, db: NewsDatabase): string {
     "",
     "기본 출처:",
     "",
-    ...item.sourceLinks.map((source, index) => `${index + 1}. ${source.label}\n${source.url}`),
+    ...item.sourceLinks.map((source, index) => `${index + 1}. ${source.label}\n${formatExternalLink(source.url, linkStyle)}`),
     item.signalLinks?.length ? "" : null,
     item.signalLinks?.length ? "추가 신호:" : null,
     item.signalLinks?.length
-      ? item.signalLinks.map((signal, index) => `${index + 1}. ${signal.label}\n${signal.url}`).join("\n\n")
+      ? item.signalLinks
+          .map((signal, index) => `${index + 1}. ${signal.label}\n${formatExternalLink(signal.url, linkStyle)}`)
+          .join("\n\n")
       : null,
     evidence.length ? "" : null,
     evidence.length ? "저장된 근거 스니펫:" : null,

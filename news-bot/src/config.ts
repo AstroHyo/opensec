@@ -3,6 +3,7 @@ import { z } from "zod";
 import { resolveProfileKey } from "./profiles.js";
 import { BLUESKY_WATCHLIST } from "./sources/blueskyWatchlist.js";
 import type { BlueskyWatchActor, ProfileKey } from "./types.js";
+import type { ExternalLinkStyle } from "./util/links.js";
 
 const envSchema = z.object({
   NEWS_BOT_TIMEZONE: z.string().default("America/New_York"),
@@ -48,6 +49,14 @@ const envSchema = z.object({
   NEWS_BOT_LLM_MAX_ITEMS_AM: z.coerce.number().int().positive().default(12),
   NEWS_BOT_LLM_MAX_ITEMS_PM: z.coerce.number().int().positive().default(20),
   NEWS_BOT_LLM_MAX_ALLOWED_TIER: z.coerce.number().int().min(0).max(3).default(3),
+  NEWS_BOT_LLM_ITEM_ENRICHMENT_TIMEOUT_MS: z
+    .union([z.string().length(0), z.coerce.number().int().positive()])
+    .optional()
+    .transform((value) => (typeof value === "number" ? value : undefined)),
+  NEWS_BOT_LLM_ITEM_ENRICHMENT_BATCH_SIZE: z
+    .union([z.string().length(0), z.coerce.number().int().min(1).max(8)])
+    .optional()
+    .transform((value) => (typeof value === "number" ? value : undefined)),
   NEWS_BOT_LLM_DAILY_BUDGET_USD: z
     .union([z.string().length(0), z.coerce.number().positive()])
     .optional()
@@ -63,7 +72,8 @@ const envSchema = z.object({
   NEWS_BOT_SIGNAL_WINDOW_HOURS: z.coerce.number().int().positive().default(48),
   NEWS_BOT_HN_TOP_LIMIT: z.coerce.number().int().positive().default(18),
   NEWS_BOT_HN_NEW_LIMIT: z.coerce.number().int().positive().default(12),
-  NEWS_BOT_BLUESKY_MAX_POSTS_PER_ACTOR: z.coerce.number().int().positive().default(10)
+  NEWS_BOT_BLUESKY_MAX_POSTS_PER_ACTOR: z.coerce.number().int().positive().default(10),
+  NEWS_BOT_LINK_STYLE: z.enum(["plain", "discord_safe"]).default("plain")
 });
 
 export interface AppConfig {
@@ -93,8 +103,13 @@ export interface AppConfig {
     maxItemsAm: number;
     maxItemsPm: number;
     maxAllowedTier: 0 | 1 | 2 | 3;
+    itemEnrichmentTimeoutMs?: number;
+    itemEnrichmentBatchSize?: number;
     dailyBudgetUsd?: number;
     budgetHardStop: boolean;
+  };
+  rendering: {
+    linkStyle: ExternalLinkStyle;
   };
   sourcing: {
     blueskyEnabled: boolean;
@@ -157,8 +172,13 @@ export function loadConfig(cwd = process.cwd()): AppConfig {
       maxItemsAm: env.NEWS_BOT_LLM_MAX_ITEMS_AM,
       maxItemsPm: env.NEWS_BOT_LLM_MAX_ITEMS_PM,
       maxAllowedTier: env.NEWS_BOT_LLM_MAX_ALLOWED_TIER as 0 | 1 | 2 | 3,
+      itemEnrichmentTimeoutMs: env.NEWS_BOT_LLM_ITEM_ENRICHMENT_TIMEOUT_MS,
+      itemEnrichmentBatchSize: env.NEWS_BOT_LLM_ITEM_ENRICHMENT_BATCH_SIZE,
       dailyBudgetUsd: env.NEWS_BOT_LLM_DAILY_BUDGET_USD,
       budgetHardStop: Boolean(env.NEWS_BOT_LLM_BUDGET_HARD_STOP)
+    },
+    rendering: {
+      linkStyle: env.NEWS_BOT_LINK_STYLE
     },
     sourcing: {
       blueskyEnabled: Boolean(env.NEWS_BOT_BLUESKY_ENABLED),
