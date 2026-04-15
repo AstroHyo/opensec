@@ -783,10 +783,7 @@ function buildFinanceInsight(
   const evidenceSpans = buildDeterministicEvidenceSpans(item, snippet);
   const companyName = String(item.metadata.companyName ?? "");
 
-  const whatChanged = truncate(
-    snippet || item.title,
-    320
-  );
+  const whatChanged = buildFinanceWhatChanged(item, bucket, companyName);
 
   if (bucket === "rates_policy") {
     return {
@@ -979,6 +976,42 @@ function buildFinanceInsight(
     watchpoints: buildFinanceWatchpoints(item, bucket),
     evidenceSpans
   };
+}
+
+function buildFinanceWhatChanged(item: NormalizedItemRecord, bucket: string, companyName: string): string {
+  if (bucket === "rates_policy") {
+    return truncate("Fed 관련 공식 의사록이나 정책 커뮤니케이션이 새로 공개되면서 금리 경로와 funding 조건을 다시 해석할 근거가 생겼습니다.", 320);
+  }
+
+  if (bucket === "inflation") {
+    return truncate("새 물가 지표나 인플레이션 관련 공식 자료가 나오면서 rate path와 valuation discount rate 해석을 다시 맞출 필요가 생겼습니다.", 320);
+  }
+
+  if (bucket === "labor") {
+    return truncate("고용이나 임금 관련 새 지표가 나오면서 경기 체력과 Fed 경로를 함께 다시 읽어야 하는 상황이 생겼습니다.", 320);
+  }
+
+  if (bucket === "liquidity_credit") {
+    return truncate("유동성이나 자금조달 여건을 보여주는 새 자료가 나오면서 credit condition과 funding stress 해석이 달라질 수 있게 됐습니다.", 320);
+  }
+
+  if (bucket === "regulation_market_structure") {
+    return truncate("규제나 공시 관련 새 발표가 나오면서 issuer와 intermediary의 비용 구조, disclosure burden, market structure 변화 가능성을 다시 보게 됐습니다.", 320);
+  }
+
+  if (bucket === "trade_sanctions_macro") {
+    return truncate("제재나 무역 관련 새 발표가 나왔고, 이것이 공급망이나 cross-border funding 경로를 실제로 건드리는지 확인할 단계로 들어갔습니다.", 320);
+  }
+
+  if (bucket === "company_capital_ai") {
+    return truncate(`${companyName || "해당 기업"} filing에서 AI 수요, capex, financing, risk factor 관련 문구 변화가 확인됐습니다.`, 320);
+  }
+
+  if (bucket === "company_filing") {
+    return truncate(`${companyName || "해당 기업"} 공시에서 guidance, financing, risk factor 관련 변화가 새로 드러났습니다.`, 320);
+  }
+
+  return truncate("공식 항목이 새로 나왔고, headline보다 실제 시장 전달 경로가 있는지 다시 확인할 필요가 생겼습니다.", 320);
 }
 
 function buildWhyImportant(item: NormalizedItemRecord, score: ScoreBreakdown, profileKey: ProfileKey): string {

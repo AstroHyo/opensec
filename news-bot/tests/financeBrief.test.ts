@@ -27,6 +27,9 @@ describe("finance brief selection", () => {
       expect(titles).not.toContain("Over 53 Million Filers Claimed At Least One of President Trump’s Signature New Tax Cuts");
       expect(titles).not.toContain("Treasury Sanctions Cartel-Linked Casinos and Key Associates on U.S.-Mexico Border");
       expect(digest.items[0]?.title).toBe("Minutes of the Board’s discount rate meetings on February 9 and March 18, 2026");
+      expect(digest.items[0]?.whatChanged).toContain("공개");
+      expect(digest.items[1]?.whatChanged).toContain("NVIDIA");
+      expect(digest.items[1]?.whatChanged).toContain("문구 변화");
     } finally {
       db.close();
     }
