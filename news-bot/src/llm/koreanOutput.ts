@@ -13,7 +13,7 @@ const BOILERPLATE_PATTERNS = [
 
 export function preferKoreanNarrative(candidate: string | null | undefined, fallback: string, maxLength: number): string {
   const normalizedFallback = truncate(collapseWhitespace(fallback), maxLength);
-  const normalizedCandidate = truncate(collapseWhitespace(candidate ?? ""), maxLength);
+  const normalizedCandidate = truncate(stripEnglishSentenceSegments(collapseWhitespace(candidate ?? "")), maxLength);
 
   if (!normalizedCandidate) {
     return normalizedFallback;
@@ -27,7 +27,7 @@ export function preferKoreanNarrative(candidate: string | null | undefined, fall
 }
 
 export function preferOptionalKoreanNarrative(candidate: string | null | undefined, maxLength: number): string | null {
-  const normalizedCandidate = truncate(collapseWhitespace(candidate ?? ""), maxLength);
+  const normalizedCandidate = truncate(stripEnglishSentenceSegments(collapseWhitespace(candidate ?? "")), maxLength);
   if (!normalizedCandidate) {
     return null;
   }
@@ -41,7 +41,7 @@ export function preferOptionalKoreanNarrative(candidate: string | null | undefin
 
 export function sanitizeNarrativeList(values: string[] | null | undefined, maxItems: number, maxLength: number): string[] {
   return (values ?? [])
-    .map((value) => truncate(collapseWhitespace(value), maxLength))
+    .map((value) => truncate(stripEnglishSentenceSegments(collapseWhitespace(value)), maxLength))
     .filter((value) => value.length > 0)
     .filter((value) => !looksMostlyEnglishNarrative(value))
     .slice(0, maxItems);
@@ -114,6 +114,23 @@ export function looksMostlyEnglishNarrative(value: string): boolean {
 export function isBoilerplateNarrative(value: string): boolean {
   const normalized = collapseWhitespace(value);
   return BOILERPLATE_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+function stripEnglishSentenceSegments(value: string): string {
+  const segments = value.split(/(?<=[.!?])\s+/);
+  const kept = segments.filter((segment) => !isStandaloneEnglishSentence(segment));
+  return collapseWhitespace(kept.join(" "));
+}
+
+function isStandaloneEnglishSentence(segment: string): boolean {
+  const normalized = segment.trim().replace(/^[\s\-:;,.]+/, "").replace(/[\s\-:;,.]+$/, "");
+  if (!normalized) {
+    return false;
+  }
+
+  const hangulChars = (normalized.match(/[가-힣]/g) ?? []).length;
+  const englishWords = (normalized.match(/\b[A-Za-z][A-Za-z0-9+./_-]*\b/g) ?? []).length;
+  return hangulChars === 0 && englishWords >= 4;
 }
 
 function uniqueStringsPreservingOrder(values: string[]): string[] {

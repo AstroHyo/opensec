@@ -17,6 +17,16 @@ describe("korean output guard", () => {
       )
     ).toBe("도입 전에 workflow integration 경계와 운영 비용을 먼저 확인해야 합니다.");
   });
+
+  it("strips standalone English sentence tails while keeping Korean narrative", () => {
+    expect(
+      preferKoreanNarrative(
+        "letta-ai/letta-code가 GitHub Trending에서 강하게 올라왔습니다. The memory-first coding agent.",
+        "letta-ai/letta-code가 GitHub Trending에서 강하게 올라왔습니다.",
+        220
+      )
+    ).toBe("letta-ai/letta-code가 GitHub Trending에서 강하게 올라왔습니다.");
+  });
 });
 
 describe("text normalization", () => {
