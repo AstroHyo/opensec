@@ -164,6 +164,44 @@ Primary fields:
 
 `summary` and `whyImportant` still exist as compatibility fields, but they are no longer the editorial center of the digest.
 
+## Finance Brief Target State
+
+The `finance` profile currently still carries more legacy templating than `tech`.
+
+Its intended direction is:
+
+```text
+deterministic finance sourcing
+-> finance taxonomy
+-> market relevance gate
+-> bounded shortlist
+-> evidence extraction
+-> structured finance interpretation
+-> bounded rerank delta
+-> selective AM/PM brief
+-> follow-up from stored finance evidence
+```
+
+Key rule:
+
+- official source status is necessary but not sufficient
+- market transmission matters more than institutional prestige
+
+The desired finance item contract is:
+
+- `whatChanged`
+- `marketTransmission`
+- `affectedAssets`
+- `whyNow`
+- `watchpoints`
+
+The desired LLM routing pattern matches the shared task-tier router:
+
+- Tier 0 deterministic only
+- Tier 1 bounded item enrichment and AM themes
+- Tier 2 PM synthesis and multi-item interpretation
+- Tier 3 explicit research only
+
 ## Housing Watcher
 
 The Xiaohongshu housing watcher is a separate subsystem from the daily digest engine.

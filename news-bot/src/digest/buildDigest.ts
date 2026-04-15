@@ -191,11 +191,25 @@ function includeFinanceItem(entry: ScoredItem, mode: DigestMode): boolean {
     return false;
   }
 
-  if (entry.item.primarySourceId === "major_company_filings") {
-    return entry.score.total >= (mode === "am" ? 74 : 68);
+  const bucket = financeBucket(entry.item);
+  const excludeFromBrief = Boolean(entry.item.metadata.financeExcludeFromBrief);
+  if (excludeFromBrief || bucket === "political_or_promotional" || bucket === "enforcement_low_impact") {
+    return false;
   }
 
-  return entry.score.total >= (mode === "am" ? 64 : 58);
+  if (bucket === "rates_policy" || bucket === "inflation" || bucket === "labor" || bucket === "liquidity_credit") {
+    return entry.score.total >= (mode === "am" ? 72 : 66);
+  }
+
+  if (bucket === "company_capital_ai") {
+    return entry.score.total >= (mode === "am" ? 70 : 64);
+  }
+
+  if (bucket === "regulation_market_structure" || bucket === "trade_sanctions_macro" || bucket === "company_filing") {
+    return entry.score.total >= (mode === "am" ? 68 : 62);
+  }
+
+  return entry.score.total >= (mode === "am" ? 76 : 70);
 }
 
 function sortScoredItems(left: ScoredItem, right: ScoredItem): number {
@@ -370,13 +384,13 @@ function buildTechPmSections(entries: DigestEntry[]): DigestSection[] {
 }
 
 function buildFinanceAmSections(scored: ScoredItem[]): DigestSection[] {
-  const macro = scored.filter((entry) => financeBucket(entry.item) !== "company" && financeBucket(entry.item) !== "regulation").slice(0, 4);
+  const macro = scored.filter((entry) => isFinanceMacroBucket(financeBucket(entry.item))).slice(0, 2);
   const macroIds = new Set(macro.map((entry) => entry.item.id));
   const policy = scored
-    .filter((entry) => financeBucket(entry.item) === "regulation" && !macroIds.has(entry.item.id))
-    .slice(0, 3);
+    .filter((entry) => isFinancePolicyBucket(financeBucket(entry.item)) && !macroIds.has(entry.item.id))
+    .slice(0, 1);
   const used = new Set([...macroIds, ...policy.map((entry) => entry.item.id)]);
-  const companies = scored.filter((entry) => financeBucket(entry.item) === "company" && !used.has(entry.item.id)).slice(0, 3);
+  const companies = scored.filter((entry) => isFinanceCompanyBucket(financeBucket(entry.item)) && !used.has(entry.item.id)).slice(0, 1);
 
   return [
     {
@@ -390,13 +404,13 @@ function buildFinanceAmSections(scored: ScoredItem[]): DigestSection[] {
       items: policy.map((entry) => toDigestEntry(entry, "policy_watch", "finance"))
     },
     {
-      key: "major_companies",
-      title: "대형주 / 기업",
+      key: "company_capital",
+      title: "기업 / 자금 흐름",
       items: companies.map((entry) => toDigestEntry(entry, "major_companies", "finance"))
     },
     {
       key: "themes",
-      title: "오늘 보이는 흐름",
+      title: "오늘의 포인트",
       items: [],
       bullets: []
     }
@@ -404,40 +418,40 @@ function buildFinanceAmSections(scored: ScoredItem[]): DigestSection[] {
 }
 
 function buildFinancePmSections(scored: ScoredItem[]): DigestSection[] {
-  const topDevelopments = scored.slice(0, 6);
+  const topDevelopments = scored.slice(0, 3);
   const topIds = new Set(topDevelopments.map((entry) => entry.item.id));
   const macro = scored
-    .filter((entry) => !topIds.has(entry.item.id) && financeBucket(entry.item) !== "company" && financeBucket(entry.item) !== "regulation")
-    .slice(0, 4);
+    .filter((entry) => !topIds.has(entry.item.id) && isFinanceMacroBucket(financeBucket(entry.item)))
+    .slice(0, 2);
   const used = new Set([...topIds, ...macro.map((entry) => entry.item.id)]);
-  const policy = scored.filter((entry) => !used.has(entry.item.id) && financeBucket(entry.item) === "regulation").slice(0, 3);
+  const policy = scored.filter((entry) => !used.has(entry.item.id) && isFinancePolicyBucket(financeBucket(entry.item))).slice(0, 1);
   const usedNext = new Set([...used, ...policy.map((entry) => entry.item.id)]);
-  const companies = scored.filter((entry) => !usedNext.has(entry.item.id) && financeBucket(entry.item) === "company").slice(0, 4);
+  const companies = scored.filter((entry) => !usedNext.has(entry.item.id) && isFinanceCompanyBucket(financeBucket(entry.item))).slice(0, 1);
 
   return [
     {
       key: "top_developments",
-      title: "Top developments",
+      title: "핵심 변화",
       items: topDevelopments.map((entry) => toDigestEntry(entry, "top_developments", "finance"))
     },
     {
       key: "macro_rates",
-      title: "Macro / Rates",
+      title: "금리 / 매크로",
       items: macro.map((entry) => toDigestEntry(entry, "macro_rates", "finance"))
     },
     {
       key: "policy_regulation",
-      title: "Policy / Regulation",
+      title: "정책 / 규제",
       items: policy.map((entry) => toDigestEntry(entry, "policy_regulation", "finance"))
     },
     {
-      key: "major_companies",
-      title: "Major Companies",
+      key: "company_capital",
+      title: "기업 / 자금",
       items: companies.map((entry) => toDigestEntry(entry, "major_companies", "finance"))
     },
     {
       key: "what_this_means",
-      title: "What this means",
+      title: "오늘 시장 해석",
       items: [],
       bullets: []
     }
@@ -459,11 +473,22 @@ function toDigestEntry(entry: ScoredItem, sectionKey: string, profileKey: Profil
   const sourceLinks = dedupeSourceLinks(entry.item);
   const title = entry.item.repoName && entry.item.repoOwner ? `${entry.item.repoOwner}/${entry.item.repoName}` : entry.item.title;
   const techInsight = profileKey === "tech" ? buildTechInsight(entry.item, entry.score) : null;
+  const financeInsight = profileKey === "finance" ? buildFinanceInsight(entry.item, entry.score) : null;
   const deterministicScore = Math.round(entry.score.total);
   const derivedWhyImportant =
-    techInsight == null
+    techInsight == null && financeInsight == null
       ? buildWhyImportant(entry.item, entry.score, profileKey)
-      : truncate([techInsight.engineerRelevance, techInsight.aiEcosystem].filter(Boolean).join(" "), 220);
+      : truncate(
+          [
+            techInsight?.engineerRelevance,
+            techInsight?.aiEcosystem,
+            financeInsight?.marketTransmission,
+            financeInsight?.affectedAssets
+          ]
+            .filter(Boolean)
+            .join(" "),
+          220
+        );
   return {
     profileKey,
     number: 0,
@@ -472,17 +497,22 @@ function toDigestEntry(entry: ScoredItem, sectionKey: string, profileKey: Profil
     sourceType: entry.item.sourceType,
     itemKind: entry.item.itemKind,
     title,
-    summary: techInsight?.whatChanged ?? buildSummary(entry.item, entry.score, profileKey),
+    summary: techInsight?.whatChanged ?? financeInsight?.whatChanged ?? buildSummary(entry.item, entry.score, profileKey),
     whyImportant: derivedWhyImportant,
-    whatChanged: techInsight?.whatChanged,
-    engineerRelevance: techInsight?.engineerRelevance,
-    aiEcosystem: techInsight?.aiEcosystem,
+    whatChanged: techInsight?.whatChanged ?? financeInsight?.whatChanged,
+    engineerRelevance: techInsight?.engineerRelevance ?? financeInsight?.marketTransmission,
+    aiEcosystem: techInsight?.aiEcosystem ?? financeInsight?.affectedAssets,
+    marketTransmission: financeInsight?.marketTransmission,
+    affectedAssets: financeInsight?.affectedAssets,
+    whyNow: financeInsight?.whyNow,
+    companyAngle: financeInsight?.companyAngle ?? null,
+    aiCapitalAngle: financeInsight?.aiCapitalAngle ?? null,
     openAiAngle: techInsight?.openAiAngle ?? null,
     repoUseCase: techInsight?.repoUseCase ?? null,
-    trendSignal: techInsight?.trendSignal,
-    causeEffect: techInsight?.causeEffect,
-    watchpoints: techInsight?.watchpoints ?? [],
-    evidenceSpans: techInsight?.evidenceSpans ?? [],
+    trendSignal: techInsight?.trendSignal ?? financeInsight?.whyNow,
+    causeEffect: techInsight?.causeEffect ?? financeInsight?.whyNow,
+    watchpoints: techInsight?.watchpoints ?? financeInsight?.watchpoints ?? [],
+    evidenceSpans: techInsight?.evidenceSpans ?? financeInsight?.evidenceSpans ?? [],
     contentSnippet: truncate(entry.item.contentText ?? entry.item.description ?? entry.item.title, 220),
     primaryUrl: sourceLinks[0]?.url ?? entry.item.originalUrl ?? entry.item.sourceUrl,
     sourceLabel: entry.item.primarySourceLabel,
@@ -729,6 +759,224 @@ function buildTechInsight(
       220
     ),
     watchpoints: buildWatchpoints(item, score),
+    evidenceSpans
+  };
+}
+
+function buildFinanceInsight(
+  item: NormalizedItemRecord,
+  score: ScoreBreakdown
+): {
+  whatChanged: string;
+  marketTransmission: string;
+  affectedAssets: string;
+  whyNow: string;
+  companyAngle?: string | null;
+  aiCapitalAngle?: string | null;
+  watchpoints: string[];
+  evidenceSpans: string[];
+} {
+  const bucket = financeBucket(item);
+  const snippet = truncate(selectEvidenceSentence(item), 280);
+  const transmissionChannels = financeMetadataList(item, "transmissionChannels");
+  const affectedAssets = financeMetadataList(item, "affectedAssets");
+  const evidenceSpans = buildDeterministicEvidenceSpans(item, snippet);
+  const companyName = String(item.metadata.companyName ?? "");
+
+  const whatChanged = truncate(
+    snippet || item.title,
+    320
+  );
+
+  if (bucket === "rates_policy") {
+    return {
+      whatChanged,
+      marketTransmission: truncate(
+        `이번 항목은 금리 경로와 은행 자금조달 조건 해석에 직접 연결됩니다. ${transmissionChannels.length > 0 ? `${transmissionChannels.join(", ")} 경로를 통해 rate repricing에 반영될 수 있습니다.` : ""}`,
+        240
+      ),
+      affectedAssets: truncate(
+        `영향 자산은 ${formatFinanceAssetList(affectedAssets, ["UST", "USD", "rate-sensitive equities"])} 쪽이 우선입니다.`,
+        220
+      ),
+      whyNow: truncate(
+        `당일 정책 커뮤니케이션이라 headline보다 다음 Fed 경로와 funding condition 해석을 바로 바꿀 수 있습니다.`,
+        200
+      ),
+      watchpoints: buildFinanceWatchpoints(item, bucket),
+      evidenceSpans
+    };
+  }
+
+  if (bucket === "inflation") {
+    return {
+      whatChanged,
+      marketTransmission: truncate(
+        `인플레이션 경로가 달라지면 rate cut timing과 valuation discount rate가 같이 움직입니다. 마진 기대와 금리 기대를 같은 축에서 다시 읽게 만드는 항목입니다.`,
+        240
+      ),
+      affectedAssets: truncate(
+        `영향 자산은 ${formatFinanceAssetList(affectedAssets, ["UST", "USD", "duration-sensitive equities"])} 입니다.`,
+        220
+      ),
+      whyNow: truncate(
+        `물가 지표는 하루 headline보다 이후 rate path 재가격에 더 오래 남는 입력이라서 PM wrap에서도 비중이 큽니다.`,
+        200
+      ),
+      watchpoints: buildFinanceWatchpoints(item, bucket),
+      evidenceSpans
+    };
+  }
+
+  if (bucket === "labor") {
+    return {
+      whatChanged,
+      marketTransmission: truncate(
+        `고용과 임금 신호는 경기 체력과 Fed 경로를 동시에 건드리기 때문에 rates와 cyclical equity 해석을 같이 흔듭니다.`,
+        220
+      ),
+      affectedAssets: truncate(
+        `영향 자산은 ${formatFinanceAssetList(affectedAssets, ["UST", "USD", "cyclicals"])} 입니다.`,
+        220
+      ),
+      whyNow: truncate(
+        `노동시장 둔화나 과열 해석이 바뀌면 cut 기대와 성장 기대가 함께 재조정되기 때문에 시장 민감도가 큽니다.`,
+        200
+      ),
+      watchpoints: buildFinanceWatchpoints(item, bucket),
+      evidenceSpans
+    };
+  }
+
+  if (bucket === "liquidity_credit") {
+    return {
+      whatChanged,
+      marketTransmission: truncate(
+        `이 항목은 liquidity, funding, credit condition 경로로 전달됩니다. rates headline보다 금융 여건이 얼마나 빡빡해지는지가 핵심입니다.`,
+        220
+      ),
+      affectedAssets: truncate(
+        `영향 자산은 ${formatFinanceAssetList(affectedAssets, ["banks", "credit", "UST"])} 입니다.`,
+        220
+      ),
+      whyNow: truncate(
+        `유동성과 funding 조건 변화는 며칠 안에 credit spread와 bank-sensitive names 반응으로 이어질 수 있습니다.`,
+        200
+      ),
+      watchpoints: buildFinanceWatchpoints(item, bucket),
+      evidenceSpans
+    };
+  }
+
+  if (bucket === "regulation_market_structure") {
+    return {
+      whatChanged,
+      marketTransmission: truncate(
+        `규제 headline 자체보다 disclosure burden, issuance friction, market structure 비용이 어디서 늘어나는지가 중요합니다. 제도 변화가 대형 issuer와 intermediary 비용 구조를 바꿀 수 있습니다.`,
+        240
+      ),
+      affectedAssets: truncate(
+        `영향 자산은 ${formatFinanceAssetList(affectedAssets, ["brokers", "exchanges", "large-cap issuers"])} 쪽입니다.`,
+        220
+      ),
+      whyNow: truncate(
+        `규제 문안은 즉시 가격에 다 반영되지 않아도 이후 공시 관행과 capital markets workflow를 바꿔 중기적으로 risk premium에 들어올 수 있습니다.`,
+        200
+      ),
+      companyAngle: null,
+      aiCapitalAngle: null,
+      watchpoints: buildFinanceWatchpoints(item, bucket),
+      evidenceSpans
+    };
+  }
+
+  if (bucket === "trade_sanctions_macro") {
+    return {
+      whatChanged,
+      marketTransmission: truncate(
+        `이 제재가 market brief에 들어올 가치는 trade, shipping, commodity, cross-border funding 경로가 실제로 열릴 때 생깁니다. 단순 집행 공지가 아니라 공급망이나 자금 흐름을 건드리는지 봐야 합니다.`,
+        240
+      ),
+      affectedAssets: truncate(
+        `영향 자산은 ${formatFinanceAssetList(affectedAssets, ["energy", "shipping", "EM FX"])} 중심으로 봐야 합니다.`,
+        220
+      ),
+      whyNow: truncate(
+        `제재 항목은 headline보다 후속 공급망 반응과 sector spread 변화가 붙는지 확인해야 실제 market signal이 됩니다.`,
+        200
+      ),
+      watchpoints: buildFinanceWatchpoints(item, bucket),
+      evidenceSpans
+    };
+  }
+
+  if (bucket === "company_capital_ai") {
+    return {
+      whatChanged,
+      marketTransmission: truncate(
+        `${companyName || "기업"}의 capex, financing, guidance 변화는 single-stock 해석을 넘어서 AI infra spending과 공급망 수요 기대를 다시 가격에 반영하게 만듭니다.`,
+        240
+      ),
+      affectedAssets: truncate(
+        `영향 자산은 ${formatFinanceAssetList(affectedAssets, ["semiconductors", "hyperscalers", "data center supply chain"])} 입니다.`,
+        220
+      ),
+      whyNow: truncate(
+        `AI capex 관련 filing 신호는 다음 실적 시즌과 financing narrative를 미리 움직일 수 있어, headline보다 capex 지속성 여부가 중요합니다.`,
+        200
+      ),
+      companyAngle: truncate(
+        `${companyName || "해당 기업"}의 guidance, financing, risk factor 문구 변화가 valuation narrative를 직접 바꿀 수 있습니다.`,
+        180
+      ),
+      aiCapitalAngle: truncate(
+        `AI infra capex가 아직 꺾이지 않는지, 아니면 financing discipline 쪽으로 방향이 바뀌는지 읽는 데 유용한 항목입니다.`,
+        180
+      ),
+      watchpoints: buildFinanceWatchpoints(item, bucket),
+      evidenceSpans
+    };
+  }
+
+  if (bucket === "company_filing") {
+    return {
+      whatChanged,
+      marketTransmission: truncate(
+        `${companyName || "기업"} filing은 guidance, financing, risk factor 변화가 valuation과 sector peer read-through로 전달됩니다.`,
+        220
+      ),
+      affectedAssets: truncate(
+        `영향 자산은 ${formatFinanceAssetList(affectedAssets, ["single stock", "sector peers"])} 입니다.`,
+        220
+      ),
+      whyNow: truncate(
+        `공시는 숫자보다 management tone과 risk factor 변화가 중요해, 다음 실적 해석과 포지셔닝의 기준점을 바꿀 수 있습니다.`,
+        200
+      ),
+      companyAngle: truncate(
+        `${companyName || "해당 기업"}의 자본 배분과 리스크 공시가 시장 기대와 얼마나 어긋나는지 확인할 가치가 있습니다.`,
+        180
+      ),
+      watchpoints: buildFinanceWatchpoints(item, bucket),
+      evidenceSpans
+    };
+  }
+
+  return {
+    whatChanged,
+    marketTransmission: truncate(
+      `공식성 자체보다 이 항목이 rates, liquidity, regulation burden, capital access 중 어디에 연결되는지 먼저 확인해야 합니다.`,
+      220
+    ),
+    affectedAssets: truncate(
+      `영향 자산은 ${formatFinanceAssetList(affectedAssets, ["broad risk sentiment"])} 정도로만 보이며, 명확한 전달 경로가 더 필요합니다.`,
+      220
+    ),
+    whyNow: truncate(
+      `headline은 강해 보여도 실제 시장 해석으로 남으려면 후속 자산 반응이나 추가 공시 근거가 더 붙어야 합니다.`,
+      200
+    ),
+    watchpoints: buildFinanceWatchpoints(item, bucket),
     evidenceSpans
   };
 }
@@ -1012,34 +1260,109 @@ export function applyThemeSections(sections: DigestSection[], themes: string[], 
   section.bullets = themes;
 }
 
+function isFinanceMacroBucket(bucket: string): boolean {
+  return ["rates_policy", "inflation", "labor", "liquidity_credit"].includes(bucket);
+}
+
+function isFinancePolicyBucket(bucket: string): boolean {
+  return ["regulation_market_structure", "trade_sanctions_macro"].includes(bucket);
+}
+
+function isFinanceCompanyBucket(bucket: string): boolean {
+  return ["company_capital_ai", "company_filing"].includes(bucket);
+}
+
+function financeMetadataList(item: NormalizedItemRecord, key: string): string[] {
+  const value = item.metadata[key];
+  return Array.isArray(value) ? value.map((entry) => collapseWhitespace(String(entry))).filter(Boolean) : [];
+}
+
+function formatFinanceAssetList(values: string[], fallback: string[]): string {
+  const selected = values.length > 0 ? values : fallback;
+  return uniqueNonEmpty(selected).join(", ");
+}
+
+function buildFinanceWatchpoints(item: NormalizedItemRecord, bucket: string): string[] {
+  const points: string[] = [];
+
+  if (bucket === "rates_policy" || bucket === "inflation" || bucket === "labor") {
+    points.push("다음 macro print와 rate path 재가격이 실제로 붙는지 확인");
+  }
+
+  if (bucket === "liquidity_credit") {
+    points.push("funding stress, spread, bank-sensitive names 반응이 이어지는지 확인");
+  }
+
+  if (bucket === "regulation_market_structure") {
+    points.push("문안이 disclosure burden이나 issuance workflow로 이어지는지 확인");
+  }
+
+  if (bucket === "trade_sanctions_macro") {
+    points.push("commodity, shipping, EM FX 쪽 2차 반응이 실제로 붙는지 확인");
+  }
+
+  if (bucket === "company_capital_ai" || bucket === "company_filing") {
+    points.push("guidance, capex, financing, risk factor 문구 변화가 후속 해설에서 반복되는지 확인");
+  }
+
+  if (String(item.metadata.marketImpactLevel ?? "") === "low") {
+    points.push("headline 대비 실제 시장 relevance가 낮지 않은지 다시 점검");
+  }
+
+  return uniqueNonEmpty(points).slice(0, 3);
+}
+
 function buildFinanceSummary(item: NormalizedItemRecord): string {
   const bucket = financeBucket(item);
 
-  if (item.primarySourceId === "major_company_filings") {
-    const company = String(item.metadata.companyName ?? item.title);
-    return truncate(`${company}의 공식 공시입니다. 가이던스, 리스크, 자본 배분, AI 투자 신호를 빠르게 확인할 가치가 있습니다.`, 120);
+  if (bucket === "rates_policy") {
+    return truncate("금리 경로와 은행 자금조달 조건 해석에 직접 연결되는 정책 신호입니다.", 120);
   }
 
   if (bucket === "inflation") {
-    return truncate("인플레이션 경로를 직접 보여주는 공식 지표입니다. 금리 기대와 기업 마진 해석에 바로 연결됩니다.", 120);
+    return truncate("인플레이션 경로를 통해 rate path와 margin 해석을 같이 바꾸는 지표입니다.", 120);
   }
 
   if (bucket === "labor") {
-    return truncate("고용과 노동시장 강도를 보여주는 공식 지표입니다. 경기 체력과 금리 해석의 핵심 입력입니다.", 120);
+    return truncate("노동시장 강도와 성장 해석을 통해 Fed 경로에 직접 연결되는 지표입니다.", 120);
   }
 
-  if (bucket === "regulation") {
-    return truncate("정책·규제 방향을 보여주는 공식 발표입니다. 시장 구조와 기업 disclosure 부담에 영향을 줄 수 있습니다.", 120);
+  if (bucket === "liquidity_credit") {
+    return truncate("유동성과 funding 여건을 바꾸는 항목이라 credit condition 해석에 중요합니다.", 120);
   }
 
-  return truncate("거시/정책 방향을 읽는 데 직접 쓰이는 공식 항목입니다. 시장 기대 변화와 같이 봐야 합니다.", 120);
+  if (bucket === "regulation_market_structure") {
+    return truncate("규제 headline보다 disclosure burden과 시장 구조 비용 변화로 읽어야 하는 항목입니다.", 120);
+  }
+
+  if (bucket === "trade_sanctions_macro") {
+    return truncate("제재이지만 trade, commodity, cross-border funding 경로가 열릴 때만 시장 의미가 커집니다.", 120);
+  }
+
+  if (bucket === "company_capital_ai") {
+    return truncate("기업 filing이지만 AI capex와 financing narrative를 통해 sector read-through가 생길 수 있습니다.", 120);
+  }
+
+  if (bucket === "company_filing") {
+    return truncate("공식 공시라 guidance, financing, risk factor 변화를 빠르게 확인할 가치가 있습니다.", 120);
+  }
+
+  return truncate("공식성보다 market transmission이 있는지 먼저 확인해야 하는 항목입니다.", 120);
 }
 
 function buildFinanceWhyImportant(item: NormalizedItemRecord): string {
   const bucket = financeBucket(item);
 
-  if (bucket === "company") {
-    return truncate("공식 공시라 해석 노이즈가 적고, 실적·가이던스·리스크 변화가 valuation 기대를 바로 움직일 수 있습니다.", 110);
+  if (bucket === "company_capital_ai") {
+    return truncate("AI capex와 financing 변화가 semiconductor, hyperscaler, supply-chain valuation에 read-through를 만들 수 있습니다.", 110);
+  }
+
+  if (bucket === "company_filing") {
+    return truncate("공식 공시라 guidance, financing, risk factor 변화가 single-stock과 sector peer valuation을 바로 움직일 수 있습니다.", 110);
+  }
+
+  if (bucket === "rates_policy") {
+    return truncate("rates path와 funding condition 재해석으로 이어질 수 있어 duration과 금융주에 직접 중요합니다.", 110);
   }
 
   if (bucket === "inflation") {
@@ -1050,31 +1373,43 @@ function buildFinanceWhyImportant(item: NormalizedItemRecord): string {
     return truncate("고용 지표는 경기 강도와 Fed 경로를 같이 읽게 해줘서, 정책 기대를 재가격할 때 중요합니다.", 110);
   }
 
-  if (bucket === "regulation") {
-    return truncate("규제·집행 변화는 시장 구조, 공시 의무, 대형주 리스크 프리미엄에 직접 영향을 줄 수 있습니다.", 110);
+  if (bucket === "liquidity_credit") {
+    return truncate("liquidity와 funding 조건 변화는 credit spread와 bank-sensitive names에 빠르게 반영될 수 있습니다.", 110);
   }
 
-  return truncate("시장과 정책 기대가 만나는 공식 신호라서, headline보다 맥락을 같이 읽을 가치가 큽니다.", 110);
+  if (bucket === "regulation_market_structure") {
+    return truncate("규제 변화는 시장 구조, 공시 의무, 대형주 리스크 프리미엄에 직접 영향을 줄 수 있습니다.", 110);
+  }
+
+  if (bucket === "trade_sanctions_macro") {
+    return truncate("제재라도 trade, shipping, commodity 경로가 열릴 때만 macro signal이 되므로 전달 경로 확인이 핵심입니다.", 110);
+  }
+
+  return truncate("headline보다 실제 시장 전달 경로가 있는지 확인해야 brief 가치가 생깁니다.", 110);
 }
 
 function buildFinanceThemes(items: DigestEntry[], mode: DigestMode): string[] {
   const buckets = items.map((item) => String(item.metadata.financeBucket ?? ""));
   const bullets: string[] = [];
 
-  if (buckets.some((bucket) => bucket === "inflation" || bucket === "labor")) {
-    bullets.push("오늘 금융 브리프는 인플레이션·고용처럼 금리 기대를 직접 흔드는 지표 비중이 높습니다.");
+  if (buckets.some((bucket) => bucket === "rates_policy" || bucket === "inflation" || bucket === "labor")) {
+    bullets.push("오늘 금융 브리프는 rate path와 growth 해석을 다시 가격에 넣게 만드는 macro 신호 비중이 높습니다.");
   }
 
-  if (buckets.some((bucket) => bucket === "regulation")) {
-    bullets.push("정책·규제 신호가 붙은 날은 headline보다 집행 방향과 disclosure 부담을 같이 읽는 게 중요합니다.");
+  if (buckets.some((bucket) => bucket === "liquidity_credit")) {
+    bullets.push("headline 금리보다 liquidity와 funding condition 쪽 변화가 더 중요한 날입니다.");
   }
 
-  if (buckets.some((bucket) => bucket === "company")) {
-    bullets.push("대형주 공시는 실적 숫자보다 가이던스, capex, risk factor 변화에 더 주목할 가치가 있습니다.");
+  if (buckets.some((bucket) => bucket === "regulation_market_structure" || bucket === "trade_sanctions_macro")) {
+    bullets.push("정책 headline이 아니라 disclosure burden, trade flow, supply-chain impact까지 이어지는지 봐야 market signal이 됩니다.");
   }
 
-  if (mode === "pm" && items.some((item) => item.primaryUrl.includes("sec.gov/Archives/edgar/data"))) {
-    bullets.push("PM wrap에서는 macro headline과 company filing을 붙여 봐야 하루 해석이 덜 흔들립니다.");
+  if (buckets.some((bucket) => bucket === "company_capital_ai" || bucket === "company_filing")) {
+    bullets.push("기업 공시는 숫자 자체보다 guidance, capex, financing, risk factor 문구 변화에 더 주목할 가치가 있습니다.");
+  }
+
+  if (mode === "pm" && buckets.some((bucket) => bucket === "company_capital_ai")) {
+    bullets.push("PM wrap에서는 AI capex와 financing narrative가 sector valuation에 얼마나 read-through 되는지 같이 봐야 합니다.");
   }
 
   return bullets.slice(0, mode === "am" ? 2 : 4);

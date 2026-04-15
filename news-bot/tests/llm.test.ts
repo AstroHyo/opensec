@@ -279,6 +279,69 @@ describe("digest enrichment helpers", () => {
     expect(entry.repoUseCase).toContain("workflow");
   });
 
+  it("maps finance enrichment fields onto market-oriented digest fields", () => {
+    const entry: DigestEntry = {
+      profileKey: "finance",
+      number: 2,
+      itemId: 55,
+      sectionKey: "top_developments",
+      sourceType: "company_filing",
+      itemKind: "company",
+      title: "NVIDIA 10-Q filing points to continued AI infrastructure capex",
+      summary: "기본 금융 요약",
+      whyImportant: "기본 금융 중요성",
+      whatChanged: "기본 변화",
+      marketTransmission: "기본 시장 연결",
+      affectedAssets: "기본 영향 자산",
+      whyNow: "기본 왜 지금",
+      companyAngle: "기본 기업 각도",
+      aiCapitalAngle: "기본 AI 자금 각도",
+      primaryUrl: "https://example.com/nvda",
+      sourceLabel: "SEC Filings / NVIDIA",
+      score: 90,
+      scoreReasons: ["AI capex read-through"],
+      sourceLinks: [{ label: "SEC Filings / NVIDIA", url: "https://example.com/nvda" }],
+      keywords: ["AI", "capex", "NVIDIA"],
+      metadata: {}
+    };
+
+    const enrichment: ItemEnrichmentRecord = {
+      id: 4,
+      profileKey: "finance",
+      itemId: 55,
+      llmRunId: 10,
+      promptVersion: "item_enrichment_v4",
+      sourceHash: "finance",
+      summaryKo: "요약",
+      whyImportantKo: "중요성",
+      whatChangedKo: "NVIDIA 10-Q에서 data center 수요와 capex 지속성이 다시 강조됐습니다.",
+      engineerRelevanceKo: "capex 지속 신호가 확인되면 semiconductor와 공급망 기대를 다시 가격에 반영하게 됩니다.",
+      aiEcosystemKo: "영향 자산은 NVDA와 semiconductor peers, hyperscaler 투자 체인 쪽입니다.",
+      openAiAngleKo: "AI infra capex가 아직 둔화보다 지속 쪽에 가까운지 읽는 선행 단서입니다.",
+      repoUseCaseKo: null,
+      trendSignalKo: "실적 시즌 전에 capex 지속성 문구가 먼저 확인되면 다음 guidance 해석의 기준점이 바뀝니다.",
+      causeEffectKo: "다음 실적 발표에서 공급망과 hyperscaler 투자 계획이 함께 재평가될 가능성이 큽니다.",
+      watchpoints: ["다음 earnings call에서 capex 가이던스 확인"],
+      evidenceSpans: ["AI demand and capex intensity remained elevated"],
+      noveltyScore: 0.78,
+      insightScore: 0.86,
+      confidence: 0.9,
+      uncertaintyNotes: [],
+      themeTags: ["AI-capex", "semis"],
+      officialnessNote: "official_vendor",
+      createdAt: "2026-04-15T00:00:00Z"
+    };
+
+    applyItemEnrichment(entry, enrichment);
+
+    expect(entry.marketTransmission).toContain("semiconductor");
+    expect(entry.affectedAssets).toContain("NVDA");
+    expect(entry.whyNow).toContain("실적 시즌");
+    expect(entry.aiCapitalAngle).toContain("AI infra capex");
+    expect(entry.openAiAngle).toBeNull();
+    expect(entry.repoUseCase).toBeNull();
+  });
+
   it("changes the theme cache key when digest explanations change", () => {
     const makeDigest = (summary: string): DigestBuildResult => ({
       profileKey: "tech",

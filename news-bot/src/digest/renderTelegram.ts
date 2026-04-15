@@ -67,12 +67,23 @@ function formatItemLine(item: DigestEntry): string {
 
 function formatItemBlock(item: DigestEntry): string[] {
   if (item.profileKey === "finance") {
-    return [
+    const lines = [
       formatItemLine(item),
-      `한줄 요약: ${collapseWhitespace(item.summary)}`,
-      `왜 중요한지: ${collapseWhitespace(item.whyImportant)}`,
-      `출처: ${item.sourceLabel}`
+      `무슨 일: ${collapseWhitespace(item.whatChanged ?? item.summary)}`,
+      `시장 연결: ${collapseWhitespace(item.marketTransmission ?? item.engineerRelevance ?? item.whyImportant)}`,
+      `영향 자산: ${collapseWhitespace(item.affectedAssets ?? item.aiEcosystem ?? item.whyImportant)}`
     ];
+
+    if (item.companyAngle) {
+      lines.push(`기업 / 자금 각도: ${collapseWhitespace(item.companyAngle)}`);
+    }
+
+    if (item.aiCapitalAngle) {
+      lines.push(`AI 자금 각도: ${collapseWhitespace(item.aiCapitalAngle)}`);
+    }
+
+    lines.push(`왜 지금: ${collapseWhitespace(item.whyNow ?? item.trendSignal ?? item.causeEffect ?? item.whyImportant)}`);
+    return lines;
   }
 
   const lines = [

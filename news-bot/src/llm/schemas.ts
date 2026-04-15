@@ -1,9 +1,9 @@
 import { z } from "zod";
 
-export const ITEM_ENRICHMENT_PROMPT_VERSION = "item_enrichment_v3";
-export const THEME_SYNTHESIS_PROMPT_VERSION = "theme_synthesis_v3";
-export const ASK_FOLLOWUP_PROMPT_VERSION = "followup_answer_v2";
-export const RESEARCH_FOLLOWUP_PROMPT_VERSION = "followup_research_v2";
+export const ITEM_ENRICHMENT_PROMPT_VERSION = "item_enrichment_v4";
+export const THEME_SYNTHESIS_PROMPT_VERSION = "theme_synthesis_v4";
+export const ASK_FOLLOWUP_PROMPT_VERSION = "followup_answer_v3";
+export const RESEARCH_FOLLOWUP_PROMPT_VERSION = "followup_research_v3";
 
 export const itemEnrichmentSchema = z.object({
   item_id: z.number().int().nonnegative(),

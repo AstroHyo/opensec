@@ -282,6 +282,8 @@ function scoreFinanceItem(item: NormalizedItemRecord, context: ScoreContext): Sc
   let authorityScore = SOURCE_AUTHORITY[item.sourceType] ?? 40;
 
   const financeBucket = String(item.metadata.financeBucket ?? "");
+  const marketImpactLevel = String(item.metadata.marketImpactLevel ?? "");
+  const financeExcludeFromBrief = Boolean(item.metadata.financeExcludeFromBrief);
   if (item.primarySourceId === "fed_press") {
     authorityScore += 16;
     reasons.push("Fed 공식 신호");
@@ -333,15 +335,35 @@ function scoreFinanceItem(item: NormalizedItemRecord, context: ScoreContext): Sc
   }
 
   let methodologyScore = 0;
-  if (financeBucket === "regulation" || financeBucket === "policy") {
-    methodologyScore = 8;
-    reasons.push("정책/규제 변화");
-  } else if (financeBucket === "company") {
-    methodologyScore = 6;
-    reasons.push("대형주 공시");
+  if (financeExcludeFromBrief || financeBucket === "political_or_promotional") {
+    suppressed = true;
+    reasons.push("시장 relevance 낮은 홍보성/정치성 항목");
+  } else if (financeBucket === "enforcement_low_impact") {
+    suppressed = true;
+    reasons.push("시장 전달 경로가 약한 집행/제재 항목");
+  } else if (financeBucket === "rates_policy" || financeBucket === "inflation" || financeBucket === "labor" || financeBucket === "liquidity_credit") {
+    methodologyScore = 14;
+    reasons.push("금리/거시 해석 직접 연결");
+  } else if (financeBucket === "regulation_market_structure" || financeBucket === "trade_sanctions_macro") {
+    methodologyScore = 9;
+    reasons.push("정책 전달 경로 확인 필요");
+  } else if (financeBucket === "company_capital_ai") {
+    methodologyScore = 11;
+    reasons.push("AI capex/자금조달 read-through");
+  } else if (financeBucket === "company_filing") {
+    methodologyScore = 7;
+    reasons.push("기업 공시 read-through");
   }
 
   let tractionScore = 0;
+  if (marketImpactLevel === "high") {
+    tractionScore += 10;
+    reasons.push("시장 영향도 높음");
+  } else if (marketImpactLevel === "medium") {
+    tractionScore += 5;
+    reasons.push("시장 영향도 중간");
+  }
+
   if (item.itemKind === "repo") {
     suppressed = true;
     reasons.push("finance profile에서는 repo 항목 제외");

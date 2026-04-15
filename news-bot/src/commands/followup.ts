@@ -161,10 +161,17 @@ function renderSubset(
       item.profileKey === "finance"
         ? [
             `[${item.number}] ${item.title}`,
-            `한줄 요약: ${item.summary}`,
+            `무슨 일: ${item.whatChanged ?? item.summary}`,
+            `시장 연결: ${item.marketTransmission ?? item.engineerRelevance ?? item.whyImportant}`,
+            `영향 자산: ${item.affectedAssets ?? item.aiEcosystem ?? item.whyImportant}`,
+            item.aiCapitalAngle ? `AI 자금 각도: ${item.aiCapitalAngle}` : null,
+            item.companyAngle ? `기업 / 자금 각도: ${item.companyAngle}` : null,
+            `왜 지금: ${item.whyNow ?? item.trendSignal ?? item.causeEffect ?? item.whyImportant}`,
             `출처: ${item.sourceLabel}`,
             `링크: ${formatExternalLink(item.primaryUrl, linkStyle)}`
-          ].join("\n")
+          ]
+            .filter((value): value is string => Boolean(value))
+            .join("\n")
         : [
             `[${item.number}] ${item.title}`,
             `무슨 일: ${item.whatChanged ?? item.summary}`,
@@ -182,6 +189,26 @@ function renderExpandedItem(item: DigestEntry, db: NewsDatabase, linkStyle: "pla
   const articleContext = getStoredArticleContext(item, db);
   const evidence = uniqueLines([...(item.evidenceSpans ?? []), ...(articleContext?.evidenceSnippets ?? [])]).slice(0, 3);
   const watchpoints = uniqueLines(item.watchpoints ?? []).slice(0, 3);
+
+  if (item.profileKey === "finance") {
+    return [
+      `[Expand ${item.number}] ${item.title}`,
+      "",
+      `핵심 변화: ${item.whatChanged ?? item.summary}`,
+      `시장 전달 경로: ${item.marketTransmission ?? item.engineerRelevance ?? item.whyImportant}`,
+      `영향 자산: ${item.affectedAssets ?? item.aiEcosystem ?? item.whyImportant}`,
+      item.companyAngle ? `기업 / 자금 각도: ${item.companyAngle}` : null,
+      item.aiCapitalAngle ? `AI / 자금 각도: ${item.aiCapitalAngle}` : null,
+      `왜 지금: ${item.whyNow ?? item.trendSignal ?? item.causeEffect ?? item.whyImportant}`,
+      watchpoints.length ? `다음 체크:\n${watchpoints.map((point) => `- ${point}`).join("\n")}` : null,
+      evidence.length ? `근거 스니펫:\n${evidence.map((point) => `- ${point}`).join("\n")}` : null,
+      item.uncertaintyNotes?.length ? `불확실성 메모: ${item.uncertaintyNotes.join(" / ")}` : null,
+      articleContext?.headline && articleContext.headline !== item.title ? `원문 헤드라인: ${articleContext.headline}` : null,
+      `주요 링크: ${formatExternalLink(item.primaryUrl, linkStyle)}`
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join("\n");
+  }
 
   return [
     `[Expand ${item.number}] ${item.title}`,
@@ -228,6 +255,25 @@ function renderSources(item: DigestEntry, db: NewsDatabase, linkStyle: "plain" |
 
 function renderWhyImportant(item: DigestEntry, db: NewsDatabase): string {
   const articleContext = getStoredArticleContext(item, db);
+  if (item.profileKey === "finance") {
+    const secondOrder = [item.affectedAssets ?? item.aiEcosystem, item.companyAngle, item.aiCapitalAngle]
+      .filter(Boolean)
+      .join(" ");
+    return [
+      `[Why important ${item.number}] ${item.title}`,
+      "",
+      `직접 영향: ${item.marketTransmission ?? item.engineerRelevance ?? item.whyImportant}`,
+      "",
+      `2차 영향: ${secondOrder || (item.causeEffect ?? item.whyImportant)}`,
+      "",
+      `포지셔닝 / 해석 포인트: ${item.whyNow ?? item.trendSignal ?? item.causeEffect ?? item.whyImportant}`,
+      "",
+      articleContext?.evidenceSnippets?.length ? `근거: ${articleContext.evidenceSnippets[0]}` : `근거: ${item.evidenceSpans?.[0] ?? item.summary}`
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join("\n");
+  }
+
   const strategicMeaning = [item.repoUseCase, item.trendSignal, item.openAiAngle, item.causeEffect].filter(Boolean).join(" ");
   return [
     `[Why important ${item.number}] ${item.title}`,

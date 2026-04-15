@@ -28,7 +28,8 @@ describe("profile-scoped digest state", () => {
       expect(techDigest.items[0].profileKey).toBe("tech");
       expect(financeDigest.items[0].profileKey).toBe("finance");
       expect(techDigest.items[0].summary).not.toBe(financeDigest.items[0].summary);
-      expect(financeDigest.items[0].whyImportant).toContain("valuation");
+      expect(financeDigest.items[0].marketTransmission).toContain("AI infra spending");
+      expect(financeDigest.items[0].affectedAssets).toContain("semiconductors");
     } finally {
       db.close();
     }
@@ -115,9 +116,12 @@ function sharedStoryInputs(): SourceItemInput[] {
       itemKind: "company",
       keywords: ["NVIDIA", "AI", "capex", "filing"],
       metadata: {
-        financeBucket: "company",
+        financeBucket: "company_capital_ai",
+        marketImpactLevel: "high",
         companyName: "NVIDIA",
-        filingForm: "10-Q"
+        filingForm: "10-Q",
+        transmissionChannels: ["capex", "guidance"],
+        affectedAssets: ["semiconductors", "hyperscalers", "data center supply chain"]
       }
     },
     {
@@ -139,7 +143,10 @@ function sharedStoryInputs(): SourceItemInput[] {
       geeknewsKind: "news",
       keywords: ["AI", "infrastructure", "capex", "developer tooling"],
       metadata: {
-        financeBucket: "company"
+        financeBucket: "company_capital_ai",
+        marketImpactLevel: "medium",
+        transmissionChannels: ["capex"],
+        affectedAssets: ["semiconductors", "hyperscalers"]
       }
     }
   ];

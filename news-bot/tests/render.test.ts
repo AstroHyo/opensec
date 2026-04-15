@@ -185,6 +185,69 @@ describe("telegram escaping", () => {
     expect(rendered).toContain("[3] mvschwarz/openrig | TypeScript | +1200 today");
   });
 
+  it("renders finance digest items with market labels and bottom-only links", () => {
+    const digest: DigestBuildResult = {
+      profileKey: "finance",
+      mode: "pm",
+      header: "[PM Market Wrap | 2026-04-15 ET]",
+      window: {
+        mode: "pm",
+        startUtc: "2026-04-15T13:00:00Z",
+        endUtc: "2026-04-15T23:59:59Z",
+        dateLabel: "2026-04-15"
+      },
+      sections: [
+        {
+          key: "top_developments",
+          title: "핵심 변화",
+          items: [
+            {
+              profileKey: "finance",
+              number: 1,
+              itemId: 51,
+              sectionKey: "top_developments",
+              sourceType: "company_filing",
+              itemKind: "company",
+              title: "NVIDIA 10-Q points to continued AI infrastructure capex",
+              summary: "요약",
+              whyImportant: "중요성",
+              whatChanged: "NVIDIA 10-Q에서 AI infra capex와 forward demand 관련 문구가 다시 강조됐습니다.",
+              marketTransmission: "capex 지속 신호가 확인되면 single-stock를 넘어서 semiconductor와 data center 공급망 기대를 다시 가격에 반영하게 됩니다.",
+              affectedAssets: "영향 자산은 NVDA, semiconductor peers, hyperscaler capex chain입니다.",
+              whyNow: "실적 시즌 전에 capex 지속성 문구가 먼저 확인되면 다음 guidance 해석의 기준점이 바뀝니다.",
+              companyAngle: "risk factor와 demand tone 변화가 valuation narrative를 직접 흔들 수 있습니다.",
+              aiCapitalAngle: "AI capex가 아직 둔화보다 지속 쪽에 가까운지 읽는 선행 단서입니다.",
+              primaryUrl: "https://example.com/nvda-10q",
+              sourceLabel: "SEC Filings / NVIDIA",
+              score: 91,
+              scoreReasons: ["AI capex read-through"],
+              sourceLinks: [{ label: "SEC Filings / NVIDIA", url: "https://example.com/nvda-10q" }],
+              keywords: ["AI", "capex", "NVIDIA"],
+              metadata: {}
+            }
+          ]
+        }
+      ],
+      themes: [],
+      items: [],
+      bodyText: "",
+      stats: {}
+    };
+
+    const rendered = renderTelegramDigest(digest);
+    expect(rendered).toContain("무슨 일:");
+    expect(rendered).toContain("시장 연결:");
+    expect(rendered).toContain("영향 자산:");
+    expect(rendered).toContain("기업 / 자금 각도:");
+    expect(rendered).toContain("AI 자금 각도:");
+    expect(rendered).toContain("왜 지금:");
+    expect(rendered).toContain("링크 모음");
+    expect(rendered).toContain("[1] NVIDIA 10-Q points to continued AI infrastructure capex\nhttps://example.com/nvda-10q");
+    expect(rendered).not.toContain("왜 중요한지:");
+    expect(rendered).not.toContain("한줄 요약:");
+    expect(rendered).not.toContain("링크:");
+  });
+
   it("wraps bottom links safely for discord when configured", () => {
     const digest: DigestBuildResult = {
       profileKey: "tech",

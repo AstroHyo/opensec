@@ -148,9 +148,18 @@ async function enrichItems(
         }
 
         const fallbackWhatChanged = item.whatChanged ?? item.summary;
-        const fallbackEngineerRelevance = item.engineerRelevance ?? item.whyImportant;
-        const fallbackAiEcosystem = item.aiEcosystem ?? item.whyImportant;
-        const fallbackTrendSignal = item.trendSignal ?? item.causeEffect ?? item.whyImportant;
+        const fallbackEngineerRelevance =
+          item.profileKey === "finance"
+            ? item.marketTransmission ?? item.engineerRelevance ?? item.whyImportant
+            : item.engineerRelevance ?? item.whyImportant;
+        const fallbackAiEcosystem =
+          item.profileKey === "finance"
+            ? item.affectedAssets ?? item.aiEcosystem ?? item.whyImportant
+            : item.aiEcosystem ?? item.whyImportant;
+        const fallbackTrendSignal =
+          item.profileKey === "finance"
+            ? item.whyNow ?? item.trendSignal ?? item.causeEffect ?? item.whyImportant
+            : item.trendSignal ?? item.causeEffect ?? item.whyImportant;
         const fallbackCauseEffect = item.causeEffect ?? item.trendSignal ?? item.whyImportant;
         const repoUseCase = item.itemKind === "repo"
           ? preferOptionalKoreanNarrative(enrichment.repo_use_case_ko, 240) ?? buildRepoUseCaseFallback(item)
@@ -396,10 +405,20 @@ export function buildDigestThemeCacheKey(digest: DigestBuildResult): string {
 
 export function applyItemEnrichment(item: DigestEntry, enrichment: ItemEnrichmentRecord): void {
   const fallbackWhatChanged = item.whatChanged ?? item.summary;
-  const fallbackEngineerRelevance = item.engineerRelevance ?? item.whyImportant;
-  const fallbackAiEcosystem = item.aiEcosystem ?? item.whyImportant;
-  const fallbackTrendSignal = item.trendSignal ?? item.causeEffect ?? item.whyImportant;
+  const fallbackEngineerRelevance =
+    item.profileKey === "finance"
+      ? item.marketTransmission ?? item.engineerRelevance ?? item.whyImportant
+      : item.engineerRelevance ?? item.whyImportant;
+  const fallbackAiEcosystem =
+    item.profileKey === "finance"
+      ? item.affectedAssets ?? item.aiEcosystem ?? item.whyImportant
+      : item.aiEcosystem ?? item.whyImportant;
+  const fallbackTrendSignal =
+    item.profileKey === "finance"
+      ? item.whyNow ?? item.trendSignal ?? item.causeEffect ?? item.whyImportant
+      : item.trendSignal ?? item.causeEffect ?? item.whyImportant;
   const fallbackCauseEffect = item.causeEffect ?? item.trendSignal ?? item.whyImportant;
+  const financeAngle = preferOptionalKoreanNarrative(enrichment.openAiAngleKo, 180);
 
   item.summary = preferKoreanNarrative(enrichment.whatChangedKo ?? enrichment.summaryKo, fallbackWhatChanged, 220);
   item.whyImportant = preferKoreanNarrative(
@@ -410,12 +429,27 @@ export function applyItemEnrichment(item: DigestEntry, enrichment: ItemEnrichmen
   item.whatChanged = preferKoreanNarrative(enrichment.whatChangedKo ?? enrichment.summaryKo, fallbackWhatChanged, 420);
   item.engineerRelevance = preferKoreanNarrative(enrichment.engineerRelevanceKo, fallbackEngineerRelevance, 240);
   item.aiEcosystem = preferKoreanNarrative(enrichment.aiEcosystemKo, fallbackAiEcosystem, 220);
-  item.openAiAngle = preferOptionalKoreanNarrative(enrichment.openAiAngleKo, 180);
   item.repoUseCase = item.itemKind === "repo"
     ? preferOptionalKoreanNarrative(enrichment.repoUseCaseKo, 240) ?? buildRepoUseCaseFallback(item)
     : null;
   item.trendSignal = preferKoreanNarrative(enrichment.trendSignalKo, fallbackTrendSignal, 180);
   item.causeEffect = preferKoreanNarrative(enrichment.causeEffectKo, fallbackCauseEffect, 180);
+  if (item.profileKey === "finance") {
+    item.marketTransmission = item.engineerRelevance;
+    item.affectedAssets = item.aiEcosystem;
+    item.whyNow = item.trendSignal;
+    if (financeAngle) {
+      if (looksLikeAiCapitalAngle(item, financeAngle)) {
+        item.aiCapitalAngle = financeAngle;
+      } else {
+        item.companyAngle = financeAngle;
+      }
+    }
+    item.openAiAngle = null;
+    item.repoUseCase = null;
+  } else {
+    item.openAiAngle = financeAngle;
+  }
   item.watchpoints = enrichment.watchpoints.length > 0 ? sanitizeNarrativeList(enrichment.watchpoints, 3, 120) : item.watchpoints;
   item.evidenceSpans = enrichment.evidenceSpans.length > 0 ? enrichment.evidenceSpans : item.evidenceSpans;
   item.wasLlmEnriched = true;
@@ -429,6 +463,22 @@ export function applyItemEnrichment(item: DigestEntry, enrichment: ItemEnrichmen
     item.finalScore = (item.deterministicScore ?? item.score) + delta;
     item.score = Math.round(item.finalScore);
   }
+}
+
+function looksLikeAiCapitalAngle(item: DigestEntry, candidate: string): boolean {
+  const haystack = [
+    item.title,
+    item.summary,
+    item.marketTransmission ?? "",
+    item.affectedAssets ?? "",
+    item.whyNow ?? "",
+    candidate,
+    item.keywords.join(" ")
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  return /(openai|ai|gpu|semiconductor|data center|hyperscaler|capex|compute|infra|foundation model)/.test(haystack);
 }
 
 function applyThemeBullets(digest: DigestBuildResult): void {

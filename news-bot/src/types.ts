@@ -219,6 +219,11 @@ export interface DigestEntry {
   whatChanged?: string;
   engineerRelevance?: string;
   aiEcosystem?: string;
+  marketTransmission?: string;
+  affectedAssets?: string;
+  whyNow?: string;
+  companyAngle?: string | null;
+  aiCapitalAngle?: string | null;
   openAiAngle?: string | null;
   repoUseCase?: string | null;
   trendSignal?: string;

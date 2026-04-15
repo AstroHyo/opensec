@@ -133,7 +133,7 @@ export async function fetchMajorCompanyFilings(config: AppConfig, fetchedAt: str
         itemKind: "company",
         keywords: uniqueStrings([company.name, company.ticker, form, "filing", "company"]),
         metadata: {
-          financeBucket: "company",
+          ...buildFinanceMetadata("major_company_filings", `${company.name} ${form} filing`, buildCompanyFilingDescription(company.name, form)),
           companyName: company.name,
           companyTicker: company.ticker,
           filingForm: form,
@@ -194,7 +194,7 @@ async function fetchOfficialRssItems(input: {
         itemKind: "news",
         keywords: buildFinanceKeywords(`${title} ${description}`, input.keywords),
         metadata: {
-          financeBucket: inferFinanceBucket(input.sourceId, title, description)
+          ...buildFinanceMetadata(input.sourceId, title, description)
         },
         rawPayload: {
           title: entry.title,
@@ -242,7 +242,7 @@ export function parseTreasuryPressPage(html: string, pageUrl: string, fetchedAt:
         itemKind: "news",
         keywords: buildFinanceKeywords(`${title} ${description}`, ["treasury", "policy"]),
         metadata: {
-          financeBucket: inferFinanceBucket("treasury_press", title, description)
+          ...buildFinanceMetadata("treasury_press", title, description)
         },
         rawPayload: {
           pageUrl,
@@ -339,10 +339,16 @@ function inferFinanceBucket(sourceId: SourceId, title: string, description: stri
   const text = `${title} ${description}`.toLowerCase();
 
   if (sourceId === "major_company_filings") {
-    return "company";
+    if (/\b(ai|gpu|gpus|data center|datacenter|capex|cloud|semiconductor|chips?|infrastructure)\b/.test(text)) {
+      return "company_capital_ai";
+    }
+    return "company_filing";
   }
   if (sourceId === "sec_press") {
-    return "regulation";
+    if (/\b(enforcement|charged|charges|fraud|ponzi|insider|manipulation|settled|settlement)\b/.test(text)) {
+      return "enforcement_low_impact";
+    }
+    return "regulation_market_structure";
   }
   if (sourceId === "bls_jobs" || /\bjobs?\b|\bpayroll\b|\bunemployment\b|\blabor\b/.test(text)) {
     return "labor";
@@ -350,10 +356,120 @@ function inferFinanceBucket(sourceId: SourceId, title: string, description: stri
   if (sourceId === "bls_cpi" || sourceId === "bls_ppi" || /\bcpi\b|\bppi\b|\binflation\b|\bprices\b/.test(text)) {
     return "inflation";
   }
-  if (sourceId === "fed_press" || sourceId === "treasury_press" || /\brate\b|\bfed\b|\btreasury\b|\byield\b/.test(text)) {
-    return "macro";
+  if (sourceId === "fed_press") {
+    if (/\bliquidity\b|\bfunding\b|\bdiscount window\b|\bfacility\b|\bswap\b|\bbank funding\b|\breserve\b/.test(text)) {
+      return "liquidity_credit";
+    }
+    return "rates_policy";
   }
-  return "policy";
+  if (sourceId === "treasury_press") {
+    if (/\b(tax cuts?|working families|president trump|signature new tax cuts?|claimed at least one)\b/.test(text)) {
+      return "political_or_promotional";
+    }
+    if (/\b(sanction|sanctions|ofac|cartel|money laundering|smuggling|casino|casinos)\b/.test(text)) {
+      if (/\b(energy|oil|shipping|trade|port|tariff|export|import|commodity|commodities|supply chain|semiconductor|chips?)\b/.test(text)) {
+        return "trade_sanctions_macro";
+      }
+      return "enforcement_low_impact";
+    }
+    if (/\bauction\b|\bborrowing\b|\bbuyback\b|\bdebt management\b|\bliquidity\b|\bfunding\b|\btreasury market\b|\byield\b/.test(text)) {
+      return "liquidity_credit";
+    }
+    return "policy_other";
+  }
+  if (/\brate\b|\bfed\b|\byield\b|\bpolicy rate\b/.test(text)) {
+    return "rates_policy";
+  }
+  return "policy_other";
+}
+
+function buildFinanceMetadata(sourceId: SourceId, title: string, description: string): Record<string, unknown> {
+  const bucket = inferFinanceBucket(sourceId, title, description);
+  const transmissionChannels = inferFinanceTransmissionChannels(bucket, title, description);
+  const affectedAssets = inferFinanceAffectedAssets(bucket, title, description);
+  const marketImpactLevel = inferFinanceMarketImpactLevel(bucket);
+
+  return {
+    financeBucket: bucket,
+    marketImpactLevel,
+    transmissionChannels,
+    affectedAssets,
+    financeExcludeFromBrief: bucket === "political_or_promotional" || bucket === "enforcement_low_impact"
+  };
+}
+
+function inferFinanceTransmissionChannels(bucket: string, title: string, description: string): string[] {
+  const text = `${title} ${description}`.toLowerCase();
+
+  if (bucket === "rates_policy") {
+    return uniqueStrings(["rates", "fed path", "bank funding"]);
+  }
+  if (bucket === "inflation") {
+    return uniqueStrings(["inflation expectations", "rates", "margin outlook"]);
+  }
+  if (bucket === "labor") {
+    return uniqueStrings(["growth expectations", "fed path", "wage pressure"]);
+  }
+  if (bucket === "liquidity_credit") {
+    return uniqueStrings(["liquidity", "funding", "credit conditions"]);
+  }
+  if (bucket === "regulation_market_structure") {
+    return uniqueStrings(["market structure", "disclosure burden", "capital markets"]);
+  }
+  if (bucket === "trade_sanctions_macro") {
+    return uniqueStrings(["trade flows", "commodities", "cross-border funding"]);
+  }
+  if (bucket === "company_capital_ai") {
+    return uniqueStrings(["AI capex", "earnings expectations", "financing conditions"]);
+  }
+  if (bucket === "company_filing") {
+    return uniqueStrings(["guidance", "risk factors", "capital allocation"]);
+  }
+
+  if (/\bdisclosure\b|\bissuer\b|\bexchange\b/.test(text)) {
+    return uniqueStrings(["disclosure burden", "market structure"]);
+  }
+
+  return [];
+}
+
+function inferFinanceAffectedAssets(bucket: string, title: string, description: string): string[] {
+  const text = `${title} ${description}`.toLowerCase();
+
+  if (bucket === "rates_policy" || bucket === "inflation" || bucket === "labor") {
+    return uniqueStrings(["UST", "USD", "rate-sensitive equities"]);
+  }
+  if (bucket === "liquidity_credit") {
+    return uniqueStrings(["banks", "credit", "UST"]);
+  }
+  if (bucket === "regulation_market_structure") {
+    return uniqueStrings(["brokers", "exchanges", "large-cap issuers"]);
+  }
+  if (bucket === "trade_sanctions_macro") {
+    return uniqueStrings(["energy", "shipping", "EM FX"]);
+  }
+  if (bucket === "company_capital_ai") {
+    return uniqueStrings(["semiconductors", "hyperscalers", "data center supply chain"]);
+  }
+  if (bucket === "company_filing") {
+    return uniqueStrings(["single stock", "sector peers"]);
+  }
+
+  if (/\benergy\b|\boil\b/.test(text)) {
+    return uniqueStrings(["energy", "inflation expectations"]);
+  }
+
+  return [];
+}
+
+function inferFinanceMarketImpactLevel(bucket: string): "high" | "medium" | "low" {
+  if (bucket === "rates_policy" || bucket === "inflation" || bucket === "labor" || bucket === "liquidity_credit") {
+    return "high";
+  }
+  if (bucket === "regulation_market_structure" || bucket === "trade_sanctions_macro" || bucket === "company_capital_ai" || bucket === "company_filing") {
+    return "medium";
+  }
+  return "low";
 }
 
 function buildFinanceKeywords(text: string, defaults: string[]): string[] {
