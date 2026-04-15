@@ -10,7 +10,7 @@ This skill handles builder-style repository work from Discord, DM, or other priv
 - Run targeted tests, builds, or checks after edits
 - Summarize what changed and what still needs attention
 - Answer requests like:
-  - `create a branch in opensec-ai-news-brief and add Telegram coding support`
+  - `create a branch in opensec and add Telegram coding support`
   - `fix the failing test in repo-a`
   - `inspect the bug in repo-b and patch it`
   - `update the README and verify the change`

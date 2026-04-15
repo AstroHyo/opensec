@@ -33,7 +33,7 @@ This skill runs the local deterministic news briefing bot for private OpenClaw w
 
 Prefer this path in the personal workspace:
 
-- `./projects/opensec-ai-news-brief/news-bot`
+- `./projects/opensec/news-bot`
 
 If the current workspace is already the OpenSec repo root, you may use:
 
@@ -41,17 +41,17 @@ If the current workspace is already the OpenSec repo root, you may use:
 
 ## Commands
 - AM digest:
-  - `pnpm --dir ./projects/opensec-ai-news-brief/news-bot digest --mode am --profile tech`
+  - `pnpm --dir ./projects/opensec/news-bot digest --mode am --profile tech`
 - PM digest:
-  - `pnpm --dir ./projects/opensec-ai-news-brief/news-bot digest --mode pm --profile tech`
+  - `pnpm --dir ./projects/opensec/news-bot digest --mode pm --profile tech`
 - Finance AM digest:
-  - `pnpm --dir ./projects/opensec-ai-news-brief/news-bot digest --mode am --profile finance`
+  - `pnpm --dir ./projects/opensec/news-bot digest --mode am --profile finance`
 - Finance PM digest:
-  - `pnpm --dir ./projects/opensec-ai-news-brief/news-bot digest --mode pm --profile finance`
+  - `pnpm --dir ./projects/opensec/news-bot digest --mode pm --profile finance`
 - Manual follow-up:
-  - `pnpm --dir ./projects/opensec-ai-news-brief/news-bot followup --profile tech "<original user message>"`
+  - `pnpm --dir ./projects/opensec/news-bot followup --profile tech "<original user message>"`
 - Fetch only:
-  - `pnpm --dir ./projects/opensec-ai-news-brief/news-bot fetch --profile tech`
+  - `pnpm --dir ./projects/opensec/news-bot fetch --profile tech`
 
 ## Intent routing
 - `brief now`: run the digest matching current ET time. Before 15:00 ET use AM, otherwise PM.

@@ -13,6 +13,7 @@ import { sha256Hex } from "../util/canonicalize.js";
 import { collapseWhitespace, truncate } from "../util/text.js";
 import { renderTelegramDigest } from "../digest/renderTelegram.js";
 import { generateStructuredJson } from "./openaiClient.js";
+import { buildRepoUseCaseFallback, preferKoreanNarrative, preferOptionalKoreanNarrative, sanitizeNarrativeList, sanitizeThemeBullets } from "./koreanOutput.js";
 import { buildItemEnrichmentPrompts, buildThemeSynthesisPrompts } from "./promptTemplates.js";
 import { estimateLlmCostUsd, routeLlmTask } from "./taskRouter.js";
 import {
@@ -140,29 +141,40 @@ async function enrichItems(
         continue;
       }
 
+      const fallbackWhatChanged = item.whatChanged ?? item.summary;
+      const fallbackEngineerRelevance = item.engineerRelevance ?? item.whyImportant;
+      const fallbackAiEcosystem = item.aiEcosystem ?? item.whyImportant;
+      const fallbackTrendSignal = item.trendSignal ?? item.causeEffect ?? item.whyImportant;
+      const fallbackCauseEffect = item.causeEffect ?? item.trendSignal ?? item.whyImportant;
+      const repoUseCase = item.itemKind === "repo"
+        ? preferOptionalKoreanNarrative(enrichment.repo_use_case_ko, 240) ?? buildRepoUseCaseFallback(item)
+        : null;
+
       const saved = db.saveItemEnrichment({
         profileKey: item.profileKey,
         itemId: item.itemId,
         llmRunId: runId,
         promptVersion: ITEM_ENRICHMENT_PROMPT_VERSION,
         sourceHash: buildItemSourceHash(item, contexts.get(item.itemId) ?? null),
-        summaryKo: truncate(collapseWhitespace(enrichment.what_changed_ko), 220),
-        whyImportantKo: truncate(
+        summaryKo: preferKoreanNarrative(enrichment.what_changed_ko, fallbackWhatChanged, 220),
+        whyImportantKo: preferKoreanNarrative(
           [enrichment.engineer_relevance_ko, enrichment.ai_ecosystem_ko].map((value) => collapseWhitespace(value)).join(" "),
+          `${fallbackEngineerRelevance} ${fallbackAiEcosystem}`,
           220
         ),
-        whatChangedKo: truncate(collapseWhitespace(enrichment.what_changed_ko), 420),
-        engineerRelevanceKo: truncate(collapseWhitespace(enrichment.engineer_relevance_ko), 240),
-        aiEcosystemKo: truncate(collapseWhitespace(enrichment.ai_ecosystem_ko), 220),
-        openAiAngleKo: enrichment.openai_angle_ko ? truncate(collapseWhitespace(enrichment.openai_angle_ko), 180) : null,
-        trendSignalKo: truncate(collapseWhitespace(enrichment.trend_signal_ko), 180),
-        causeEffectKo: truncate(collapseWhitespace(enrichment.cause_effect_ko), 180),
-        watchpoints: enrichment.watchpoints_ko.map((value) => truncate(collapseWhitespace(value), 120)),
-        evidenceSpans: enrichment.evidence_spans.map((value) => truncate(collapseWhitespace(value), 180)),
+        whatChangedKo: preferKoreanNarrative(enrichment.what_changed_ko, fallbackWhatChanged, 420),
+        engineerRelevanceKo: preferKoreanNarrative(enrichment.engineer_relevance_ko, fallbackEngineerRelevance, 240),
+        aiEcosystemKo: preferKoreanNarrative(enrichment.ai_ecosystem_ko, fallbackAiEcosystem, 220),
+        openAiAngleKo: preferOptionalKoreanNarrative(enrichment.openai_angle_ko, 180),
+        repoUseCaseKo: repoUseCase,
+        trendSignalKo: preferKoreanNarrative(enrichment.trend_signal_ko, fallbackTrendSignal, 180),
+        causeEffectKo: preferKoreanNarrative(enrichment.cause_effect_ko, fallbackCauseEffect, 180),
+        watchpoints: sanitizeNarrativeList(enrichment.watchpoints_ko, 3, 120),
+        evidenceSpans: sanitizeNarrativeList(enrichment.evidence_spans, 4, 180),
         noveltyScore: enrichment.novelty_score,
         insightScore: enrichment.insight_score,
         confidence: enrichment.confidence,
-        uncertaintyNotes: enrichment.uncertainty_notes.map((value) => truncate(collapseWhitespace(value), 110)),
+        uncertaintyNotes: sanitizeNarrativeList(enrichment.uncertainty_notes, 3, 110),
         themeTags: enrichment.theme_tags.map((value) => truncate(collapseWhitespace(value), 32)),
         officialnessNote: enrichment.officialness_note,
         createdAt: now.toUTC().toISO() ?? new Date().toISOString()
@@ -245,10 +257,12 @@ async function enrichThemes(
       timeoutMs: route.timeoutMs
     });
 
-    const themes = response.data.themes_ko
-      .map((value) => truncate(collapseWhitespace(value), 160))
-      .filter((value) => value.length > 0)
-      .slice(0, digest.mode === "am" ? 2 : 4);
+    const themes = sanitizeThemeBullets(
+      response.data.themes_ko,
+      digest.themes,
+      digest.mode === "am" ? 2 : 4,
+      160
+    );
 
     if (themes.length > 0) {
       db.saveDigestThemeEnrichment({
@@ -344,16 +358,28 @@ export function buildDigestThemeCacheKey(digest: DigestBuildResult): string {
 }
 
 export function applyItemEnrichment(item: DigestEntry, enrichment: ItemEnrichmentRecord): void {
-  item.summary = enrichment.whatChangedKo ?? enrichment.summaryKo;
-  item.whyImportant =
-    [enrichment.engineerRelevanceKo, enrichment.aiEcosystemKo].filter(Boolean).join(" ") || enrichment.whyImportantKo;
-  item.whatChanged = enrichment.whatChangedKo ?? enrichment.summaryKo;
-  item.engineerRelevance = enrichment.engineerRelevanceKo ?? item.engineerRelevance;
-  item.aiEcosystem = enrichment.aiEcosystemKo ?? item.aiEcosystem;
-  item.openAiAngle = enrichment.openAiAngleKo ?? null;
-  item.trendSignal = enrichment.trendSignalKo ?? item.trendSignal;
-  item.causeEffect = enrichment.causeEffectKo ?? item.causeEffect;
-  item.watchpoints = enrichment.watchpoints.length > 0 ? enrichment.watchpoints : item.watchpoints;
+  const fallbackWhatChanged = item.whatChanged ?? item.summary;
+  const fallbackEngineerRelevance = item.engineerRelevance ?? item.whyImportant;
+  const fallbackAiEcosystem = item.aiEcosystem ?? item.whyImportant;
+  const fallbackTrendSignal = item.trendSignal ?? item.causeEffect ?? item.whyImportant;
+  const fallbackCauseEffect = item.causeEffect ?? item.trendSignal ?? item.whyImportant;
+
+  item.summary = preferKoreanNarrative(enrichment.whatChangedKo ?? enrichment.summaryKo, fallbackWhatChanged, 220);
+  item.whyImportant = preferKoreanNarrative(
+    [enrichment.engineerRelevanceKo, enrichment.aiEcosystemKo].filter(Boolean).join(" ") || enrichment.whyImportantKo,
+    `${fallbackEngineerRelevance} ${fallbackAiEcosystem}`,
+    220
+  );
+  item.whatChanged = preferKoreanNarrative(enrichment.whatChangedKo ?? enrichment.summaryKo, fallbackWhatChanged, 420);
+  item.engineerRelevance = preferKoreanNarrative(enrichment.engineerRelevanceKo, fallbackEngineerRelevance, 240);
+  item.aiEcosystem = preferKoreanNarrative(enrichment.aiEcosystemKo, fallbackAiEcosystem, 220);
+  item.openAiAngle = preferOptionalKoreanNarrative(enrichment.openAiAngleKo, 180);
+  item.repoUseCase = item.itemKind === "repo"
+    ? preferOptionalKoreanNarrative(enrichment.repoUseCaseKo, 240) ?? buildRepoUseCaseFallback(item)
+    : null;
+  item.trendSignal = preferKoreanNarrative(enrichment.trendSignalKo, fallbackTrendSignal, 180);
+  item.causeEffect = preferKoreanNarrative(enrichment.causeEffectKo, fallbackCauseEffect, 180);
+  item.watchpoints = enrichment.watchpoints.length > 0 ? sanitizeNarrativeList(enrichment.watchpoints, 3, 120) : item.watchpoints;
   item.evidenceSpans = enrichment.evidenceSpans.length > 0 ? enrichment.evidenceSpans : item.evidenceSpans;
   item.wasLlmEnriched = true;
   item.enrichmentConfidence = enrichment.confidence;

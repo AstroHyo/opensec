@@ -115,8 +115,8 @@ ssh ubuntu@<public-ip>
 Then:
 
 ```bash
-git clone https://github.com/AstroHyo/opensec-ai-news-brief.git /home/ubuntu/opensec-ai-news-brief
-cd /home/ubuntu/opensec-ai-news-brief
+git clone https://github.com/AstroHyo/opensec.git /home/ubuntu/opensec
+cd /home/ubuntu/opensec
 ./scripts/aws/bootstrap-ec2-c7i-flex-large.sh
 ```
 
@@ -155,7 +155,7 @@ After bootstrap:
 
 ```bash
 mkdir -p ~/.openclaw
-cp /srv/openclaw/workspace-personal/projects/opensec-ai-news-brief/openclaw.personal.example.jsonc ~/.openclaw/openclaw.json
+cp /srv/openclaw/workspace-personal/projects/opensec/openclaw.personal.example.jsonc ~/.openclaw/openclaw.json
 ```
 
 Edit:
@@ -179,7 +179,7 @@ openclaw gateway status
 Create:
 
 ```bash
-cd /srv/openclaw/workspace-personal/projects/opensec-ai-news-brief/news-bot
+cd /srv/openclaw/workspace-personal/projects/opensec/news-bot
 cp .env.example .env
 ```
 
@@ -218,7 +218,7 @@ Why reduce AM/PM max items on this box:
 After bootstrap:
 
 ```bash
-cd /srv/openclaw/workspace-personal/projects/opensec-ai-news-brief/news-bot
+cd /srv/openclaw/workspace-personal/projects/opensec/news-bot
 pnpm approve-builds
 ```
 
@@ -260,7 +260,7 @@ Look for `from.id`.
 Once Telegram works:
 
 ```bash
-cd /srv/openclaw/workspace-personal/projects/opensec-ai-news-brief/news-bot
+cd /srv/openclaw/workspace-personal/projects/opensec/news-bot
 TELEGRAM_USER_ID=<numeric-telegram-user-id> ./scripts/install-cron.sh
 ```
 

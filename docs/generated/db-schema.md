@@ -175,11 +175,12 @@ Stores per-item LLM insight artifacts.
 - compatibility fields:
   - `summary_ko`
   - `why_important_ko`
-- v2 insight fields:
+- v3 insight fields:
   - `what_changed_ko`
   - `engineer_relevance_ko`
   - `ai_ecosystem_ko`
   - `openai_angle_ko`
+  - `repo_use_case_ko`
   - `trend_signal_ko`
   - `cause_effect_ko`
   - `watchpoints_json`

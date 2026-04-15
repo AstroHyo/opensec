@@ -476,6 +476,7 @@ function toDigestEntry(entry: ScoredItem, sectionKey: string, profileKey: Profil
     engineerRelevance: techInsight?.engineerRelevance,
     aiEcosystem: techInsight?.aiEcosystem,
     openAiAngle: techInsight?.openAiAngle ?? null,
+    repoUseCase: techInsight?.repoUseCase ?? null,
     trendSignal: techInsight?.trendSignal,
     causeEffect: techInsight?.causeEffect,
     watchpoints: techInsight?.watchpoints ?? [],
@@ -623,6 +624,7 @@ function buildTechInsight(
   engineerRelevance: string;
   aiEcosystem: string;
   openAiAngle?: string | null;
+  repoUseCase?: string | null;
   trendSignal: string;
   causeEffect: string;
   watchpoints: string[];
@@ -651,6 +653,7 @@ function buildTechInsight(
         `이번 항목은 OpenAI가 어디에 자원을 쓰고 무엇을 제품화하려는지 직접 보여주는 신호입니다.`,
         220
       ),
+      repoUseCase: null,
       trendSignal: truncate(
         `${topicPhrase ?? "OpenAI product/engineering"}이 단발 뉴스가 아니라 운영 가능한 스택으로 굳어지는 흐름입니다.`,
         220
@@ -671,18 +674,22 @@ function buildTechInsight(
         320
       ),
       engineerRelevance: truncate(
-        `${item.repoLanguage ?? "주요"} stack에서 바로 실험 가능한 artifact입니다. ${item.repoStarsToday ? `하루 stars +${item.repoStarsToday}` : "최근 traction"}가 붙었다는 건 단순 아이디어가 아니라 실제 도입/복제 시도가 늘고 있다는 뜻에 가깝습니다.`,
+        `${item.repoLanguage ?? "주요"} stack에서 바로 실험 가능한 repo이고, ${item.repoStarsToday ? `하루 stars +${item.repoStarsToday}` : "최근 traction"}가 붙었다는 건 README 수준 아이디어보다 실제 재현과 도입 시도가 늘고 있다는 뜻에 가깝습니다. 설치 경로, 권한 경계, 기존 workflow와의 접점을 빠르게 검증해볼 가치가 있습니다.`,
         260
       ),
       aiEcosystem: truncate(
-        `${topicPhrase ?? "agent/devtool"} 쪽 구현 패턴이 라이브러리와 CLI 형태로 빠르게 commoditize되고 있다는 신호입니다.`,
+        `${topicPhrase ?? "agent/devtool"} 쪽 차별점이 모델 자체보다 runtime, memory, orchestration, developer ergonomics 같은 실행 계층으로 이동하고 있다는 신호입니다.`,
         220
       ),
       openAiAngle: score.matchedKeywords.includes("OpenAI")
         ? truncate("OpenAI API 또는 OpenAI 중심 워크플로우와 결합될 가능성이 높아 실제 엔지니어링 실험 경로가 짧습니다.", 220)
         : null,
+      repoUseCase: truncate(
+        buildRepoUseCase(item, score),
+        240
+      ),
       trendSignal: truncate(
-        `올해의 핵심 흐름은 모델 그 자체보다 agent runtime, MCP, browser automation, eval tooling 같은 주변 실행 계층이 두꺼워지는 쪽에 있습니다.`,
+        `상위 repo들이 공통으로 가리키는 변화는 모델 호출 자체보다 agent runtime, MCP, browser automation, eval tooling 같은 실행 계층이 두꺼워지고 있다는 점입니다.`,
         220
       ),
       causeEffect: truncate(
@@ -710,6 +717,7 @@ function buildTechInsight(
     openAiAngle: score.matchedKeywords.includes("OpenAI")
       ? truncate("이 흐름은 OpenAI 생태계와의 접점에서 API 설계, 개발자 workflow, 경쟁사 대응 방식을 같이 바꿀 가능성이 큽니다.", 220)
       : null,
+    repoUseCase: null,
     trendSignal: truncate(
       `${topicPhrase ?? "실무형 AI tooling"}이 발표/데모 단계에서 운영 패턴 단계로 이동하고 있다는 신호입니다.`,
       220
@@ -785,7 +793,7 @@ function buildGeneralEngineerRelevance(
     return `GeekNews에서 토론이 붙었다는 건 한국 개발자들이 실전 도입 관점에서 이 주제를 보고 있다는 뜻입니다. 구현 난이도와 체감 가치가 함께 검증될 가능성이 큽니다.`;
   }
 
-  return `엔지니어 관점에서는 기능 발표 자체보다 실제 workflow, tooling, integration friction, 팀 도입 비용이 어떻게 달라지는지가 포인트입니다.`;
+  return `구현팀 입장에서는 새 기능보다 기존 pipeline 어디를 고쳐야 하는지가 중요합니다. 이 항목은 integration 경계, 운영 절차, 검증 비용 중 어떤 부분이 바뀌는지 확인할 가치가 있습니다.`;
 }
 
 function buildAiEcosystemView(item: NormalizedItemRecord, score: ScoreBreakdown, topicPhrase: string | null): string {
@@ -797,7 +805,7 @@ function buildAiEcosystemView(item: NormalizedItemRecord, score: ScoreBreakdown,
     return `저장된 원문 외에 빠른 social signal까지 붙어 있어 확산 속도가 빠를 수 있습니다. 이런 항목은 며칠 내에 유사 툴과 대응 글이 따라붙는 경우가 많습니다.`;
   }
 
-  return `${topicPhrase ?? "AI tooling"}이 점점 제품 기능보다 실행 계층, 운영 방법, 개발자 경험 중심으로 이동하는 흐름 안에 있습니다.`;
+  return `${topicPhrase ?? "AI tooling"}에서 경쟁축이 데모 기능보다 배포 가능한 runtime, 운영 제어점, 개발자 경험 쪽으로 옮겨가고 있습니다. 그래서 도입팀은 모델 성능만이 아니라 실행 구조까지 같이 비교해야 합니다.`;
 }
 
 function buildCauseEffect(item: NormalizedItemRecord, score: ScoreBreakdown): string {
@@ -837,6 +845,29 @@ function buildWatchpoints(item: NormalizedItemRecord, score: ScoreBreakdown): st
 
   points.push("이 흐름이 우리 workflow나 실험 우선순위를 바꿀 수준인지 판단");
   return uniqueNonEmpty(points).slice(0, 3);
+}
+
+function buildRepoUseCase(item: NormalizedItemRecord, score: ScoreBreakdown): string {
+  const repoLabel = item.repoOwner && item.repoName ? `${item.repoOwner}/${item.repoName}` : item.title;
+  const text = `${item.title} ${item.description ?? ""} ${item.contentText ?? ""} ${score.matchedKeywords.join(" ")}`.toLowerCase();
+
+  if (/(mcp|tool calling|tool-use|tools)/i.test(text)) {
+    return `OpenSec 같은 개인 운영 스택에서는 ${repoLabel}를 skill/exec 경계에 붙여 agent 도구 연결과 권한 제어를 더 일관되게 만들 수 있습니다.`;
+  }
+
+  if (/(browser|playwright|computer use|automation)/i.test(text)) {
+    return `OpenSec에서는 ${repoLabel}를 follow-up 조사나 반복 운영 작업에 붙여 브라우저 기반 수작업을 줄이는 실험을 해볼 만합니다.`;
+  }
+
+  if (/(memory|context|session|mem)/i.test(text)) {
+    return `OpenSec에서는 ${repoLabel}를 장기 작업 문맥 저장 계층에 붙여 follow-up 답변과 에이전트 연속성을 높이는 식으로 활용할 수 있습니다.`;
+  }
+
+  if (/(eval|benchmark|judge|grading)/i.test(text)) {
+    return `OpenSec에서는 ${repoLabel}를 digest 품질 점검이나 follow-up 회귀 테스트에 연결해 출력 품질 변동을 더 빨리 잡을 수 있습니다.`;
+  }
+
+  return `OpenSec 같은 개인 운영 스택에서는 ${repoLabel}를 별도 실험 흐름에 붙여 반복 작업을 작은 agent 단계로 분리하고 운영 자동화를 더 촘촘하게 만들 수 있습니다.`;
 }
 
 function buildDeterministicEvidenceSpans(item: NormalizedItemRecord, snippet: string): string[] {

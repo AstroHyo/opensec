@@ -103,6 +103,7 @@ function computeItemRelevanceScore(item: DigestEntry, tokens: string[], question
     item.engineerRelevance ?? "",
     item.aiEcosystem ?? "",
     item.openAiAngle ?? "",
+    item.repoUseCase ?? "",
     item.trendSignal ?? "",
     item.causeEffect ?? "",
     (item.watchpoints ?? []).join(" "),

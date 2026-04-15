@@ -10,7 +10,7 @@ This skill handles day-to-day repository work inside the personal workspace.
 - Summarize a branch or recent commit history
 - Answer questions like:
   - `check repo-a status`
-  - `pull latest in opensec-ai-news-brief and summarize`
+  - `pull latest in opensec and summarize`
   - `run tests in repo-b`
   - `what changed on this branch`
 

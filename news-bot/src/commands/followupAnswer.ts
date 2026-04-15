@@ -2,6 +2,7 @@ import { DateTime } from "luxon";
 import type { AppConfig } from "../config.js";
 import { NewsDatabase } from "../db.js";
 import { generateStructuredJson } from "../llm/openaiClient.js";
+import { preferKoreanNarrative, sanitizeNarrativeList } from "../llm/koreanOutput.js";
 import { buildFollowupAnswerPrompts } from "../llm/promptTemplates.js";
 import { estimateLlmCostUsd, routeLlmTask } from "../llm/taskRouter.js";
 import {
@@ -143,12 +144,16 @@ async function maybeAnswerWithLlm(input: {
 
     const allowedNumbers = new Set(input.selectedItems.map((item) => item.number));
     const usedNumbers = response.data.used_item_numbers.filter((value) => allowedNumbers.has(value));
+    const fallbackAnswer = `저장된 digest 기준으로 ${input.selectedItems
+      .slice(0, 2)
+      .map((item) => `${item.number}번 ${item.title}`)
+      .join(", ")} 항목이 질문과 가장 직접적으로 연결됩니다.`;
 
     return {
-      answer: truncate(collapseWhitespace(response.data.answer_ko), 700),
-      bullets: response.data.bullets_ko.map((value) => truncate(collapseWhitespace(value), 160)),
+      answer: preferKoreanNarrative(response.data.answer_ko, fallbackAnswer, 700),
+      bullets: sanitizeNarrativeList(response.data.bullets_ko, 4, 160),
       usedNumbers: usedNumbers.length > 0 ? usedNumbers : input.selectedItems.map((item) => item.number),
-      uncertaintyNotes: response.data.uncertainty_notes.map((value) => truncate(collapseWhitespace(value), 140))
+      uncertaintyNotes: sanitizeNarrativeList(response.data.uncertainty_notes, 3, 140)
     };
   } catch (error) {
     input.db.finishLlmRun({

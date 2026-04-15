@@ -3,7 +3,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKSPACE_ROOT="${WORKSPACE_ROOT:-/srv/openclaw/workspace-personal}"
-TARGET_REPO_DIR="$WORKSPACE_ROOT/projects/opensec-ai-news-brief"
+TARGET_REPO_DIR="$WORKSPACE_ROOT/projects/opensec"
 
 mkdir -p \
   "$WORKSPACE_ROOT/memory" \
@@ -49,7 +49,7 @@ if [[ "$REPO_ROOT" != "$TARGET_REPO_DIR" ]]; then
   echo "  $TARGET_REPO_DIR"
   echo
   echo "If you have not already cloned the repo there, run:"
-  echo "  git clone https://github.com/AstroHyo/opensec-ai-news-brief.git $TARGET_REPO_DIR"
+  echo "  git clone https://github.com/AstroHyo/opensec.git $TARGET_REPO_DIR"
 else
   echo "Workspace scaffolded and linked to repo at $TARGET_REPO_DIR"
 fi

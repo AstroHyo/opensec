@@ -318,7 +318,7 @@ Notes:
 
 - Keep one visible coordinator and let builder/researcher behavior stay hidden behind delegation.
 - Start or attach OpenClaw in the workspace root so `skills/ai_news_brief/SKILL.md` is available.
-- The current EC2 deployment path is `/srv/openclaw/workspace-personal/projects/opensec-ai-news-brief`.
+- The current EC2 deployment path is `/srv/openclaw/workspace-personal/projects/opensec`.
 - On OpenClaw `2026.4.x`, prefer `openclaw agents bind --agent main --bind discord` over hand-editing `bindings` in the config file.
 - For a solo private guild, `requireMention: true` is a good starting posture, but switching to `false` can make the day-to-day UX much better once permissions and routing are stable.
 

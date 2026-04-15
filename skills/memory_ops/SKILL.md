@@ -26,7 +26,7 @@ This skill handles file-based memory capture and distillation for the personal D
 Before writing a daily note, scaffold the file if needed:
 
 ```bash
-bash ./projects/opensec-ai-news-brief/scripts/ensure-daily-memory-note.sh
+bash ./projects/opensec/scripts/ensure-daily-memory-note.sh
 ```
 
 This prints the note path and creates today's file with the standard sections if missing.

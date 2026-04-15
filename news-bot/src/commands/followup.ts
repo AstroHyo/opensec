@@ -157,9 +157,12 @@ function renderSubset(title: string, items: DigestEntry[], predicate: (item: Dig
         : [
             `[${item.number}] ${item.title}`,
             `무슨 일: ${item.whatChanged ?? item.summary}`,
+            item.repoUseCase ? `활용 포인트: ${item.repoUseCase}` : null,
             `변화 신호: ${item.trendSignal ?? item.causeEffect ?? item.whyImportant}`,
             `링크: ${item.primaryUrl}`
-          ].join("\n")
+          ]
+            .filter((value): value is string => Boolean(value))
+            .join("\n")
     )
   ].join("\n\n");
 }
@@ -175,6 +178,7 @@ function renderExpandedItem(item: DigestEntry, db: NewsDatabase): string {
     `핵심 내용: ${item.whatChanged ?? item.summary}`,
     `왜 지금 나왔나: ${item.causeEffect ?? item.trendSignal ?? item.whyImportant}`,
     `엔지니어에게 실제로 달라지는 점: ${item.engineerRelevance ?? item.whyImportant}`,
+    item.repoUseCase ? `OpenSec 활용: ${item.repoUseCase}` : null,
     `OpenAI / AI ecosystem 연결: ${[item.openAiAngle, item.aiEcosystem].filter(Boolean).join(" ") || item.whyImportant}`,
     watchpoints.length ? `앞으로 볼 것:\n${watchpoints.map((point) => `- ${point}`).join("\n")}` : null,
     evidence.length ? `근거 스니펫:\n${evidence.map((point) => `- ${point}`).join("\n")}` : null,
@@ -211,7 +215,7 @@ function renderSources(item: DigestEntry, db: NewsDatabase): string {
 
 function renderWhyImportant(item: DigestEntry, db: NewsDatabase): string {
   const articleContext = getStoredArticleContext(item, db);
-  const strategicMeaning = [item.trendSignal, item.openAiAngle, item.causeEffect].filter(Boolean).join(" ");
+  const strategicMeaning = [item.repoUseCase, item.trendSignal, item.openAiAngle, item.causeEffect].filter(Boolean).join(" ");
   return [
     `[Why important ${item.number}] ${item.title}`,
     "",
@@ -219,10 +223,14 @@ function renderWhyImportant(item: DigestEntry, db: NewsDatabase): string {
     "",
     `2차 영향: ${item.aiEcosystem ?? item.causeEffect ?? item.whyImportant}`,
     "",
+    item.repoUseCase ? `OpenSec 활용: ${item.repoUseCase}` : null,
+    item.repoUseCase ? "" : null,
     `전략적 의미: ${strategicMeaning || item.whyImportant}`,
     "",
     articleContext?.evidenceSnippets?.length ? `근거: ${articleContext.evidenceSnippets[0]}` : `근거: ${item.evidenceSpans?.[0] ?? item.summary}`
-  ].join("\n");
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join("\n");
 }
 
 function notFound(index: string): string {

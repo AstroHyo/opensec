@@ -128,4 +128,60 @@ describe("telegram escaping", () => {
     expect(rendered).toContain("링크 모음");
     expect(rendered).toContain("[1] GPT mini update\nhttps://openai.com/example-mini");
   });
+
+  it("renders repo use cases for repo radar items", () => {
+    const digest: DigestBuildResult = {
+      profileKey: "tech",
+      mode: "pm",
+      header: "[PM AI Wrap | 2026-04-15 ET]",
+      window: {
+        mode: "pm",
+        startUtc: "2026-04-15T00:00:00Z",
+        endUtc: "2026-04-15T23:59:59Z",
+        dateLabel: "2026-04-15"
+      },
+      sections: [
+        {
+          key: "repo_radar",
+          title: "Repo Radar",
+          items: [
+            {
+              profileKey: "tech",
+              number: 3,
+              itemId: 33,
+              sectionKey: "repo_radar",
+              sourceType: "github_trending",
+              itemKind: "repo",
+              title: "mvschwarz/openrig",
+              summary: "요약",
+              whyImportant: "중요성",
+              whatChanged: "Claude Code와 Codex를 하나의 harness로 묶는 repo가 빠르게 주목받고 있습니다.",
+              engineerRelevance: "멀티 agent workflow를 작은 실행 단계로 나눠 붙일 수 있는지 바로 검증해볼 수 있습니다.",
+              aiEcosystem: "coding agent 경쟁축이 모델보다 orchestration 계층으로 이동하고 있습니다.",
+              repoUseCase: "OpenSec에서는 이 repo를 별도 실험 흐름에 붙여 agent 간 역할 분리와 실행 경계를 더 세밀하게 나눠볼 수 있습니다.",
+              trendSignal: "agent runtime과 orchestration 계층이 빠르게 라이브러리화되고 있습니다.",
+              primaryUrl: "https://github.com/mvschwarz/openrig",
+              sourceLabel: "GitHub Trending",
+              score: 87,
+              scoreReasons: ["Repo Radar"],
+              sourceLinks: [{ label: "GitHub Trending", url: "https://github.com/mvschwarz/openrig" }],
+              repoLanguage: "TypeScript",
+              repoStarsToday: 1200,
+              keywords: ["agents", "Codex"],
+              metadata: {}
+            }
+          ]
+        }
+      ],
+      themes: [],
+      items: [],
+      bodyText: "",
+      stats: {}
+    };
+
+    const rendered = renderTelegramDigest(digest);
+    expect(rendered).toContain("활용 포인트:");
+    expect(rendered).toContain("OpenSec에서는 이 repo를 별도 실험 흐름에 붙여");
+    expect(rendered).toContain("[3] mvschwarz/openrig | TypeScript | +1200 today");
+  });
 });

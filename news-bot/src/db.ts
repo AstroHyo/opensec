@@ -185,6 +185,7 @@ CREATE TABLE IF NOT EXISTS item_enrichments (
   uncertainty_notes_json TEXT NOT NULL,
   theme_tags_json TEXT NOT NULL,
   officialness_note TEXT,
+  repo_use_case_ko TEXT,
   created_at TEXT NOT NULL,
   UNIQUE(item_id, prompt_version, source_hash)
 );
@@ -382,6 +383,7 @@ export class NewsDatabase {
     this.ensureColumn("item_enrichments", "engineer_relevance_ko", "TEXT");
     this.ensureColumn("item_enrichments", "ai_ecosystem_ko", "TEXT");
     this.ensureColumn("item_enrichments", "openai_angle_ko", "TEXT");
+    this.ensureColumn("item_enrichments", "repo_use_case_ko", "TEXT");
     this.ensureColumn("item_enrichments", "trend_signal_ko", "TEXT");
     this.ensureColumn("item_enrichments", "cause_effect_ko", "TEXT");
     this.ensureColumn("item_enrichments", "watchpoints_json", "TEXT NOT NULL DEFAULT '[]'");
@@ -1364,6 +1366,7 @@ export class NewsDatabase {
     engineerRelevanceKo?: string | null;
     aiEcosystemKo?: string | null;
     openAiAngleKo?: string | null;
+    repoUseCaseKo?: string | null;
     trendSignalKo?: string | null;
     causeEffectKo?: string | null;
     watchpoints: string[];
@@ -1380,10 +1383,10 @@ export class NewsDatabase {
       .prepare(
         `INSERT INTO item_enrichments (
           profile_key, item_id, llm_run_id, prompt_version, source_hash, summary_ko, why_important_ko,
-          what_changed_ko, engineer_relevance_ko, ai_ecosystem_ko, openai_angle_ko, trend_signal_ko,
+          what_changed_ko, engineer_relevance_ko, ai_ecosystem_ko, openai_angle_ko, repo_use_case_ko, trend_signal_ko,
           cause_effect_ko, watchpoints_json, evidence_spans_json, novelty_score, insight_score,
           confidence, uncertainty_notes_json, theme_tags_json, officialness_note, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(item_id, prompt_version, source_hash)
         DO UPDATE SET
           profile_key = excluded.profile_key,
@@ -1394,6 +1397,7 @@ export class NewsDatabase {
           engineer_relevance_ko = excluded.engineer_relevance_ko,
           ai_ecosystem_ko = excluded.ai_ecosystem_ko,
           openai_angle_ko = excluded.openai_angle_ko,
+          repo_use_case_ko = excluded.repo_use_case_ko,
           trend_signal_ko = excluded.trend_signal_ko,
           cause_effect_ko = excluded.cause_effect_ko,
           watchpoints_json = excluded.watchpoints_json,
@@ -1418,6 +1422,7 @@ export class NewsDatabase {
         input.engineerRelevanceKo ?? null,
         input.aiEcosystemKo ?? null,
         input.openAiAngleKo ?? null,
+        input.repoUseCaseKo ?? null,
         input.trendSignalKo ?? null,
         input.causeEffectKo ?? null,
         JSON.stringify(input.watchpoints),
@@ -1900,6 +1905,7 @@ function mapItemEnrichmentRow(row: ItemEnrichmentRow): ItemEnrichmentRecord {
     engineerRelevanceKo: row.engineer_relevance_ko,
     aiEcosystemKo: row.ai_ecosystem_ko,
     openAiAngleKo: row.openai_angle_ko,
+    repoUseCaseKo: row.repo_use_case_ko,
     trendSignalKo: row.trend_signal_ko,
     causeEffectKo: row.cause_effect_ko,
     watchpoints: JSON.parse(row.watchpoints_json),
@@ -2157,6 +2163,7 @@ interface ItemEnrichmentRow {
   engineer_relevance_ko?: string | null;
   ai_ecosystem_ko?: string | null;
   openai_angle_ko?: string | null;
+  repo_use_case_ko?: string | null;
   trend_signal_ko?: string | null;
   cause_effect_ko?: string | null;
   watchpoints_json: string;

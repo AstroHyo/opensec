@@ -167,6 +167,7 @@ describe("database migrations", () => {
       expect(enrichmentColumns).toContain("engineer_relevance_ko");
       expect(enrichmentColumns).toContain("ai_ecosystem_ko");
       expect(enrichmentColumns).toContain("openai_angle_ko");
+      expect(enrichmentColumns).toContain("repo_use_case_ko");
       expect(enrichmentColumns).toContain("trend_signal_ko");
       expect(enrichmentColumns).toContain("cause_effect_ko");
       expect(enrichmentColumns).toContain("watchpoints_json");

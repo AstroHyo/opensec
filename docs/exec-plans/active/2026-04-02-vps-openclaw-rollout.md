@@ -121,7 +121,7 @@ OpenClaw reads the workspace skill and runs `news-bot` via `exec`.
 ## Recommended Filesystem Layout
 
 ```text
-/opt/opensec-ai-news-brief
+/opt/opensec
 ├── news-bot
 ├── skills
 ├── docs
@@ -182,8 +182,8 @@ Install:
 Then:
 
 ```bash
-git clone https://github.com/AstroHyo/opensec-ai-news-brief.git /opt/opensec-ai-news-brief
-cd /opt/opensec-ai-news-brief/news-bot
+git clone https://github.com/AstroHyo/opensec.git /opt/opensec
+cd /opt/opensec/news-bot
 pnpm install
 pnpm approve-builds
 ```
@@ -196,8 +196,8 @@ Approve:
 If you want the recommended personal workspace layout directly:
 
 ```bash
-git clone https://github.com/AstroHyo/opensec-ai-news-brief.git /srv/openclaw/workspace-personal/projects/opensec-ai-news-brief
-cd /srv/openclaw/workspace-personal/projects/opensec-ai-news-brief
+git clone https://github.com/AstroHyo/opensec.git /srv/openclaw/workspace-personal/projects/opensec
+cd /srv/openclaw/workspace-personal/projects/opensec
 ./scripts/setup-personal-workspace.sh
 ```
 
@@ -206,7 +206,7 @@ cd /srv/openclaw/workspace-personal/projects/opensec-ai-news-brief
 Create:
 
 ```bash
-cd /opt/opensec-ai-news-brief/news-bot
+cd /opt/opensec/news-bot
 cp .env.example .env
 ```
 
@@ -276,18 +276,18 @@ Requirements:
 Recommended config bootstrap:
 
 ```bash
-cp /srv/openclaw/workspace-personal/projects/opensec-ai-news-brief/openclaw.personal.example.jsonc ~/.openclaw/openclaw.json
+cp /srv/openclaw/workspace-personal/projects/opensec/openclaw.personal.example.jsonc ~/.openclaw/openclaw.json
 ```
 
 Practical rule:
 
-- run or manage OpenClaw from the same user account that owns `/opt/opensec-ai-news-brief`
+- run or manage OpenClaw from the same user account that owns `/opt/opensec`
 - keep the workspace path stable
 
 Validation:
 
 ```bash
-cd /opt/opensec-ai-news-brief/news-bot
+cd /opt/opensec/news-bot
 pnpm test
 ./scripts/dry-run-am.sh
 ./scripts/dry-run-pm.sh
@@ -375,7 +375,7 @@ openclaw cron add \
   --announce \
   --channel telegram \
   --to "123456789" \
-  --message "Use the ai_news_brief skill in the workspace at /opt/opensec-ai-news-brief. Run \`pnpm --dir /opt/opensec-ai-news-brief/news-bot digest:am\` via exec. Return only the script output so it can be sent to Telegram as-is. Do not browse the web manually unless the script fails."
+  --message "Use the ai_news_brief skill in the workspace at /opt/opensec. Run \`pnpm --dir /opt/opensec/news-bot digest:am\` via exec. Return only the script output so it can be sent to Telegram as-is. Do not browse the web manually unless the script fails."
 ```
 
 And:
@@ -391,13 +391,13 @@ openclaw cron add \
   --announce \
   --channel telegram \
   --to "123456789" \
-  --message "Use the ai_news_brief skill in the workspace at /opt/opensec-ai-news-brief. Run \`pnpm --dir /opt/opensec-ai-news-brief/news-bot digest:pm\` via exec. Return only the script output so it can be sent to Telegram as-is. Do not browse the web manually unless the script fails."
+  --message "Use the ai_news_brief skill in the workspace at /opt/opensec. Run \`pnpm --dir /opt/opensec/news-bot digest:pm\` via exec. Return only the script output so it can be sent to Telegram as-is. Do not browse the web manually unless the script fails."
 ```
 
 Or use the helper script in the repo:
 
 ```bash
-cd /opt/opensec-ai-news-brief/news-bot
+cd /opt/opensec/news-bot
 TELEGRAM_USER_ID=123456789 ./scripts/install-cron.sh
 ```
 
@@ -463,7 +463,7 @@ If you want the clearest answer:
 
 - choose Hetzner `CPX21` in Ashburn
 - install Ubuntu 24.04 LTS x86_64
-- clone this repo to `/opt/opensec-ai-news-brief`
+- clone this repo to `/opt/opensec`
 - install OpenClaw via the official installer
 - use Telegram allowlist mode with your numeric user ID
 - register the AM and PM isolated cron jobs through OpenClaw

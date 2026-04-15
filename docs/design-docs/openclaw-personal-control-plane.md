@@ -85,7 +85,7 @@ Instead, the personal agent should be able to:
 │   ├── system_ops/
 │   └── inbox_ops/
 ├── projects/
-│   ├── opensec-ai-news-brief/
+│   ├── opensec/
 │   ├── repo-a/
 │   └── repo-b/
 └── scratch/
@@ -329,7 +329,7 @@ This gives you "Codex from DM" behavior in practice, even though OpenClaw itself
 
 Examples of good Discord asks:
 
-- `create a branch in opensec-ai-news-brief and wire Discord coding support`
+- `create a branch in opensec and wire Discord coding support`
 - `fix the failing test in repo-a and show me what changed`
 - `inspect the auth bug in repo-b, patch it, and run the narrowest relevant test`
 

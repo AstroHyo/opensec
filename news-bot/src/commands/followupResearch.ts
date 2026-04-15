@@ -1,6 +1,7 @@
 import { DateTime } from "luxon";
 import type { AppConfig } from "../config.js";
 import { NewsDatabase } from "../db.js";
+import { preferKoreanNarrative, sanitizeNarrativeList } from "../llm/koreanOutput.js";
 import { generateStructuredJsonWithWebSearch } from "../llm/openaiClient.js";
 import { buildResearchAnswerPrompts } from "../llm/promptTemplates.js";
 import { estimateLlmCostUsd, routeLlmTask } from "../llm/taskRouter.js";
@@ -136,12 +137,16 @@ export async function answerResearchFollowup(input: {
     const usedNumbers = response.data.used_item_numbers.filter((value) => allowedNumbers.has(value));
     const usedItemNumbers = usedNumbers.length > 0 ? usedNumbers : selectedItems.map((item) => item.number);
     const sources = mergeResearchSources(response.data.sources, response.annotations).slice(0, 6);
+    const fallbackAnswer = `저장된 digest와 추가 조사 기준으로 ${selectedItems
+      .slice(0, 2)
+      .map((item) => `${item.number}번 ${item.title}`)
+      .join(", ")} 항목이 질문과 가장 직접적으로 연결됩니다.`;
 
     return renderResearchAnswer({
-      answer: response.data.answer_ko,
-      bullets: response.data.bullets_ko,
-      implications: response.data.implications_ko,
-      uncertaintyNotes: response.data.uncertainty_notes,
+      answer: preferKoreanNarrative(response.data.answer_ko, fallbackAnswer, 900),
+      bullets: sanitizeNarrativeList(response.data.bullets_ko, 5, 280),
+      implications: sanitizeNarrativeList(response.data.implications_ko, 3, 240),
+      uncertaintyNotes: sanitizeNarrativeList(response.data.uncertainty_notes, 3, 140),
       usedItemNumbers,
       selectedItems,
       sources

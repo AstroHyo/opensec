@@ -7,8 +7,8 @@ if [[ "${EUID}" -eq 0 ]]; then
 fi
 
 WORKSPACE_ROOT="${WORKSPACE_ROOT:-/srv/openclaw/workspace-personal}"
-REPO_URL="${REPO_URL:-https://github.com/AstroHyo/opensec-ai-news-brief.git}"
-REPO_DIR="${REPO_DIR:-$WORKSPACE_ROOT/projects/opensec-ai-news-brief}"
+REPO_URL="${REPO_URL:-https://github.com/AstroHyo/opensec.git}"
+REPO_DIR="${REPO_DIR:-$WORKSPACE_ROOT/projects/opensec}"
 SWAPFILE_PATH="${SWAPFILE_PATH:-/swapfile}"
 SWAP_SIZE_GB="${SWAP_SIZE_GB:-4}"
 NODE_MAJOR="${NODE_MAJOR:-24}"

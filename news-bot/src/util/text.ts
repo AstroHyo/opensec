@@ -1,5 +1,5 @@
 export function collapseWhitespace(value: string): string {
-  return value.replace(/\s+/g, " ").trim();
+  return decodeHtmlEntities(value).replace(/\s+/g, " ").trim();
 }
 
 export function stripHtml(value?: string | null): string {
@@ -13,10 +13,6 @@ export function stripHtml(value?: string | null): string {
       .replace(/<\/p>/gi, " ")
       .replace(/<li>/gi, " - ")
       .replace(/<[^>]+>/g, " ")
-      .replace(/&nbsp;/g, " ")
-      .replace(/&amp;/g, "&")
-      .replace(/&quot;/g, "\"")
-      .replace(/&#39;/g, "'")
   );
 }
 
@@ -34,4 +30,16 @@ export function uniqueStrings(values: Array<string | undefined | null>): string[
 
 export function firstNonEmpty(...values: Array<string | undefined | null>): string | undefined {
   return values.find((value) => typeof value === "string" && value.trim().length > 0)?.trim();
+}
+
+export function decodeHtmlEntities(value: string): string {
+  return value
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, "\"")
+    .replace(/&#39;/gi, "'")
+    .replace(/&#x27;/gi, "'")
+    .replace(/&#x2F;/gi, "/")
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number.parseInt(code, 10)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(Number.parseInt(code, 16)));
 }

@@ -1,9 +1,9 @@
 import { z } from "zod";
 
-export const ITEM_ENRICHMENT_PROMPT_VERSION = "item_enrichment_v2";
-export const THEME_SYNTHESIS_PROMPT_VERSION = "theme_synthesis_v2";
-export const ASK_FOLLOWUP_PROMPT_VERSION = "followup_answer_v1";
-export const RESEARCH_FOLLOWUP_PROMPT_VERSION = "followup_research_v1";
+export const ITEM_ENRICHMENT_PROMPT_VERSION = "item_enrichment_v3";
+export const THEME_SYNTHESIS_PROMPT_VERSION = "theme_synthesis_v3";
+export const ASK_FOLLOWUP_PROMPT_VERSION = "followup_answer_v2";
+export const RESEARCH_FOLLOWUP_PROMPT_VERSION = "followup_research_v2";
 
 export const itemEnrichmentSchema = z.object({
   item_id: z.number().int().nonnegative(),
@@ -11,6 +11,7 @@ export const itemEnrichmentSchema = z.object({
   engineer_relevance_ko: z.string().min(1).max(300),
   ai_ecosystem_ko: z.string().min(1).max(260),
   openai_angle_ko: z.string().max(220).nullable(),
+  repo_use_case_ko: z.string().max(240).nullable(),
   trend_signal_ko: z.string().min(1).max(220),
   cause_effect_ko: z.string().min(1).max(220),
   watchpoints_ko: z.array(z.string().min(1).max(140)).max(3),
@@ -78,6 +79,7 @@ export const itemEnrichmentJsonSchema = {
           "engineer_relevance_ko",
           "ai_ecosystem_ko",
           "openai_angle_ko",
+          "repo_use_case_ko",
           "trend_signal_ko",
           "cause_effect_ko",
           "watchpoints_ko",
@@ -95,6 +97,7 @@ export const itemEnrichmentJsonSchema = {
           engineer_relevance_ko: { type: "string", maxLength: 300 },
           ai_ecosystem_ko: { type: "string", maxLength: 260 },
           openai_angle_ko: { type: ["string", "null"], maxLength: 220 },
+          repo_use_case_ko: { type: ["string", "null"], maxLength: 240 },
           trend_signal_ko: { type: "string", maxLength: 220 },
           cause_effect_ko: { type: "string", maxLength: 220 },
           watchpoints_ko: {

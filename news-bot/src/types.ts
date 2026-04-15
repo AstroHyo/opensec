@@ -220,6 +220,7 @@ export interface DigestEntry {
   engineerRelevance?: string;
   aiEcosystem?: string;
   openAiAngle?: string | null;
+  repoUseCase?: string | null;
   trendSignal?: string;
   causeEffect?: string;
   watchpoints?: string[];
@@ -330,6 +331,7 @@ export interface ItemEnrichmentRecord {
   engineerRelevanceKo?: string | null;
   aiEcosystemKo?: string | null;
   openAiAngleKo?: string | null;
+  repoUseCaseKo?: string | null;
   trendSignalKo?: string | null;
   causeEffectKo?: string | null;
   watchpoints: string[];

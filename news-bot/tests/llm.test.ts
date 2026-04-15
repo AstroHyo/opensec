@@ -127,6 +127,7 @@ describe("digest enrichment helpers", () => {
       engineerRelevanceKo: "기존 integration 코드와 eval harness를 다시 봐야 합니다.",
       aiEcosystemKo: "agent runtime 계층이 더 제품화되는 흐름입니다.",
       openAiAngleKo: "OpenAI가 실행 계층을 직접 밀고 있습니다.",
+      repoUseCaseKo: null,
       trendSignalKo: "모델보다 실행 스택 경쟁이 강해집니다.",
       causeEffectKo: "wrapper/tooling ecosystem이 재정렬될 가능성이 큽니다.",
       watchpoints: ["SDK changelog 확인"],
@@ -197,6 +198,7 @@ describe("digest enrichment helpers", () => {
       engineerRelevanceKo: "permission과 sandbox 경계를 다시 설계해야 합니다.",
       aiEcosystemKo: "framework가 wrapper보다 policy/eval 경쟁으로 이동합니다.",
       openAiAngleKo: null,
+      repoUseCaseKo: null,
       trendSignalKo: "agent runtime이 API boundary 안으로 들어오는 흐름입니다.",
       causeEffectKo: "기존 wrapper 생태계가 재편될 수 있습니다.",
       watchpoints: [],
@@ -213,6 +215,68 @@ describe("digest enrichment helpers", () => {
     applyItemEnrichment(entry, enrichment);
 
     expect(entry.openAiAngle).toBeNull();
+  });
+
+  it("falls back when a repo enrichment returns English narrative sentences", () => {
+    const entry: DigestEntry = {
+      profileKey: "tech",
+      number: 3,
+      itemId: 99,
+      sectionKey: "repo_radar",
+      sourceType: "github_trending",
+      itemKind: "repo",
+      title: "mvschwarz/openrig",
+      summary: "기본 요약",
+      whyImportant: "기본 중요성",
+      whatChanged: "여러 coding agent를 하나의 harness로 묶는 실험용 repo가 빠르게 주목받고 있습니다.",
+      engineerRelevance: "로컬 작업 흐름과 agent orchestration 경계를 함께 테스트해볼 수 있습니다.",
+      aiEcosystem: "coding agent 경쟁이 모델보다 운영 계층으로 이동하는 흐름과 맞닿아 있습니다.",
+      trendSignal: "agent orchestration 계층이 빠르게 라이브러리화되고 있습니다.",
+      causeEffect: "이런 repo가 늘수록 도입팀은 모델 성능보다 실행 구조를 더 많이 비교하게 됩니다.",
+      primaryUrl: "https://github.com/mvschwarz/openrig",
+      sourceLabel: "GitHub Trending",
+      score: 88,
+      scoreReasons: ["Repo Radar"],
+      sourceLinks: [{ label: "GitHub Trending", url: "https://github.com/mvschwarz/openrig" }],
+      repoLanguage: "TypeScript",
+      repoStarsToday: 1200,
+      keywords: ["agents", "Codex", "Claude Code"],
+      metadata: {}
+    };
+
+    const enrichment: ItemEnrichmentRecord = {
+      id: 3,
+      profileKey: "tech",
+      itemId: 99,
+      llmRunId: 9,
+      promptVersion: "item_enrichment_v3",
+      sourceHash: "ghi",
+      summaryKo: "영문 fallback",
+      whyImportantKo: "영문 fallback",
+      whatChangedKo: "I've been running Claude Code and Codex together every day.",
+      engineerRelevanceKo: "Engineers should evaluate workflow integration friction before adopting it.",
+      aiEcosystemKo: "The ecosystem is moving toward execution-layer competition.",
+      openAiAngleKo: null,
+      repoUseCaseKo: "OpenSec can plug this into its workflow orchestration layer.",
+      trendSignalKo: "This is a signal that orchestration is becoming the real product layer.",
+      causeEffectKo: "This will cause more teams to compare runtime structure.",
+      watchpoints: ["Check the README"],
+      evidenceSpans: ["tmux harness"],
+      noveltyScore: 0.75,
+      insightScore: 0.8,
+      confidence: 0.82,
+      uncertaintyNotes: [],
+      themeTags: ["agents"],
+      officialnessNote: "repo_signal",
+      createdAt: "2026-04-15T00:00:00Z"
+    };
+
+    applyItemEnrichment(entry, enrichment);
+
+    expect(entry.whatChanged).toBe("여러 coding agent를 하나의 harness로 묶는 실험용 repo가 빠르게 주목받고 있습니다.");
+    expect(entry.engineerRelevance).toBe("로컬 작업 흐름과 agent orchestration 경계를 함께 테스트해볼 수 있습니다.");
+    expect(entry.repoUseCase).toContain("OpenSec");
+    expect(entry.repoUseCase).toContain("workflow");
   });
 
   it("changes the theme cache key when digest explanations change", () => {

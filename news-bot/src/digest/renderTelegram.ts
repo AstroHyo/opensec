@@ -80,6 +80,11 @@ function formatItemBlock(item: DigestEntry): string[] {
     lines.push(`OpenAI 각도: ${openAiAngle}`);
   }
 
+  const repoUseCase = selectRepoUseCase(item);
+  if (repoUseCase) {
+    lines.push(`활용 포인트: ${repoUseCase}`);
+  }
+
   lines.push(`변화 신호: ${pickChangeSignal(item)}`);
   return lines;
 }
@@ -138,6 +143,27 @@ function selectOpenAiAngle(item: DigestEntry): string | null {
   }
 
   return candidate;
+}
+
+function selectRepoUseCase(item: DigestEntry): string | null {
+  if (item.itemKind !== "repo") {
+    return null;
+  }
+
+  const candidate = collapseWhitespace(item.repoUseCase ?? "");
+  if (!candidate) {
+    return null;
+  }
+
+  const comparisonTargets = [
+    item.whatChanged ?? item.summary,
+    item.engineerRelevance ?? item.whyImportant,
+    item.aiEcosystem ?? "",
+    pickChangeSignal(item)
+  ];
+
+  const redundant = comparisonTargets.some((target) => similarityScore(candidate, target) >= 0.74);
+  return redundant ? null : candidate;
 }
 
 function isGenericSignal(value: string): boolean {
