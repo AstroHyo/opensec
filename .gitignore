@@ -6,6 +6,20 @@
 .env.*
 !.env.example
 discord-secrets.txt
+training-secrets.txt
+training-bot-secrets.txt
+
+# Defense-in-depth for private specialist workspaces
+workspace-training-private/
+training-private/
+training-bot-private/
+private-training/
+private-workspaces/
+.training-private/
+.private-training/
+.private-workspaces/
+tmp-training-bot/
+training-bot.local/
 
 # Node / pnpm
 node_modules/
@@ -21,6 +35,7 @@ coverage/
 
 # Keep the tracked data placeholder
 !news-bot/data/.gitkeep
+news-bot/data/xhs-profile/
 
 # Vitest / temp output
 .vitest/

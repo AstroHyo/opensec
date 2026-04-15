@@ -1,6 +1,8 @@
 import "dotenv/config";
+import { runXiaohongshuLogin, runXiaohongshuRentWatch } from "./commands/watchXiaohongshuRent.js";
 import { runFollowupCommand } from "./commands/followup.js";
 import { runDigestFlow, runFetchOnly } from "./commands/runDigest.js";
+import { runLlmRunsCommand } from "./commands/showLlmRuns.js";
 import { resolveProfileKey } from "./profiles.js";
 
 async function main(): Promise<void> {
@@ -52,6 +54,33 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (command === "xhs-rent-watch") {
+    const output = await runXiaohongshuRentWatch({
+      nowIso: getStringOption(options, "now"),
+      dbPathOverride: getStringOption(options, "db")
+    });
+    if (output) {
+      console.log(output);
+    }
+    return;
+  }
+
+  if (command === "xhs-login") {
+    await runXiaohongshuLogin();
+    return;
+  }
+
+  if (command === "llm-runs") {
+    console.log(
+      await runLlmRunsCommand({
+        profileKey: resolveProfileKey(getStringOption(options, "profile")),
+        dbPathOverride: getStringOption(options, "db"),
+        limit: getNumberOption(options, "limit")
+      })
+    );
+    return;
+  }
+
   throw new Error(`Unknown command: ${command}`);
 }
 
@@ -88,6 +117,16 @@ function getStringOption(options: ParsedOptions, key: string): string | undefine
 
 function getBooleanOption(options: ParsedOptions, key: string): boolean {
   return options[key] === true;
+}
+
+function getNumberOption(options: ParsedOptions, key: string): number | undefined {
+  const value = options[key];
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 main().catch((error) => {

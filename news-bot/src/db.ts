@@ -19,7 +19,6 @@ import type {
   ItemSourceRecord,
   LlmProvider,
   LlmRunRecord,
-  LlmTaskKey,
   LlmTaskTier,
   LlmRunType,
   NormalizedItemRecord,
@@ -326,6 +325,7 @@ CREATE INDEX IF NOT EXISTS idx_sent_items_recent_identity ON sent_items(profile_
 CREATE INDEX IF NOT EXISTS idx_followup_context_digest_number ON followup_context(profile_key, digest_id, item_number);
 CREATE INDEX IF NOT EXISTS idx_source_runs_profile_source_started ON source_runs(profile_key, source_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_llm_runs_profile_type_started ON llm_runs(profile_key, run_type, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_llm_runs_profile_task_started ON llm_runs(profile_key, task_key, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_llm_runs_profile_completed ON llm_runs(profile_key, completed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_item_enrichments_item_lookup ON item_enrichments(profile_key, item_id, prompt_version, source_hash);
 CREATE INDEX IF NOT EXISTS idx_digest_enrichments_lookup ON digest_enrichments(profile_key, digest_cache_key, prompt_version);
@@ -1255,7 +1255,7 @@ export class NewsDatabase {
   startLlmRun(input: {
     profileKey: ProfileKey;
     runType: LlmRunType;
-    taskKey?: LlmTaskKey;
+    taskKey?: string | null;
     taskTier?: LlmTaskTier;
     provider?: LlmProvider;
     modelName: string;
@@ -1318,6 +1318,20 @@ export class NewsDatabase {
         input.errorText ?? null,
         input.runId
       );
+  }
+
+  listRecentLlmRuns(profileKey: ProfileKey, limit = 20): LlmRunRecord[] {
+    const rows = this.db
+      .prepare<unknown[], LlmRunRow>(
+        `SELECT *
+         FROM llm_runs
+         WHERE profile_key = ?
+         ORDER BY started_at DESC, id DESC
+         LIMIT ?`
+      )
+      .all(profileKey, limit);
+
+    return rows.map((row) => mapLlmRunRow(row));
   }
 
   getItemEnrichment(
@@ -1851,6 +1865,27 @@ function mapDigestRow(row: DigestRow): SavedDigestRecord {
   };
 }
 
+function mapLlmRunRow(row: LlmRunRow): LlmRunRecord {
+  return {
+    id: row.id,
+    profileKey: row.profile_key as ProfileKey,
+    runType: row.run_type as LlmRunType,
+    taskKey: row.task_key ?? null,
+    taskTier: (row.task_tier as LlmRunRecord["taskTier"]) ?? null,
+    provider: (row.provider as LlmRunRecord["provider"]) ?? null,
+    modelName: row.model_name,
+    promptVersion: row.prompt_version,
+    inputHash: row.input_hash,
+    startedAt: row.started_at,
+    completedAt: row.completed_at ?? null,
+    status: row.status as LlmRunRecord["status"],
+    latencyMs: row.latency_ms ?? null,
+    tokenUsage: row.token_usage_json ? (JSON.parse(row.token_usage_json) as Record<string, unknown>) : null,
+    estimatedCostUsd: row.estimated_cost_usd ?? null,
+    errorText: row.error_text ?? null
+  };
+}
+
 function mapItemEnrichmentRow(row: ItemEnrichmentRow): ItemEnrichmentRecord {
   return {
     id: row.id,
@@ -2088,6 +2123,25 @@ interface DigestRow {
   items_json: string;
   themes_json: string;
   stats_json: string;
+}
+
+interface LlmRunRow {
+  id: number;
+  profile_key: string;
+  run_type: string;
+  task_key?: string | null;
+  task_tier?: number | null;
+  provider?: string | null;
+  model_name: string;
+  prompt_version: string;
+  input_hash: string;
+  started_at: string;
+  completed_at?: string | null;
+  status: string;
+  latency_ms?: number | null;
+  token_usage_json?: string | null;
+  estimated_cost_usd?: number | null;
+  error_text?: string | null;
 }
 
 interface ItemEnrichmentRow {

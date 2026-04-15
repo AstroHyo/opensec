@@ -153,6 +153,16 @@ describe("database migrations", () => {
         .all()
         .map((column) => column.name);
 
+      const llmRunColumns = verificationDb
+        .prepare<unknown[], { name: string }>("PRAGMA table_info(llm_runs)")
+        .all()
+        .map((column) => column.name);
+
+      expect(llmRunColumns).toContain("task_key");
+      expect(llmRunColumns).toContain("task_tier");
+      expect(llmRunColumns).toContain("provider");
+      expect(llmRunColumns).toContain("estimated_cost_usd");
+
       expect(enrichmentColumns).toContain("what_changed_ko");
       expect(enrichmentColumns).toContain("engineer_relevance_ko");
       expect(enrichmentColumns).toContain("ai_ecosystem_ko");

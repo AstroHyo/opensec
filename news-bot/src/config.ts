@@ -10,8 +10,20 @@ const envSchema = z.object({
   NEWS_BOT_DB_PATH: z.string().default("./data/news-bot.sqlite"),
   NEWS_BOT_DEFAULT_PROFILE: z.string().default("tech"),
   NEWS_BOT_HTTP_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
+  NEWS_BOT_XHS_PROFILE_DIR: z.string().default("./data/xhs-profile"),
+  NEWS_BOT_XHS_HEADLESS: z
+    .string()
+    .optional()
+    .transform((value) => (value == null ? false : !(value === "0" || value === "false"))),
+  NEWS_BOT_XHS_VISION_ENABLED: z
+    .string()
+    .optional()
+    .transform((value) => value === "1" || value === "true"),
+  NEWS_BOT_XHS_MAX_RESULTS_PER_QUERY: z.coerce.number().int().positive().default(12),
   NEWS_BOT_TELEGRAM_USER_ID: z.string().optional(),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
+  DISCORD_BOT_TOKEN: z.string().optional(),
+  DISCORD_OWNER_USER_ID: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
   XAI_API_KEY: z.string().optional(),
   NEWS_BOT_LLM_ENABLED: z
@@ -63,6 +75,8 @@ export interface AppConfig {
   httpTimeoutMs: number;
   telegramUserId?: string;
   telegramBotToken?: string;
+  discordBotToken?: string;
+  discordOwnerUserId?: string;
   openAiApiKey?: string;
   xAiApiKey?: string;
   llm: {
@@ -89,6 +103,12 @@ export interface AppConfig {
     hnNewLimit: number;
     blueskyMaxPostsPerActor: number;
     blueskyWatchlist: BlueskyWatchActor[];
+  };
+  housingWatcher: {
+    profileDir: string;
+    headless: boolean;
+    visionEnabled: boolean;
+    maxResultsPerQuery: number;
   };
   sourceUrls: {
     geeknewsRss: string;
@@ -119,6 +139,8 @@ export function loadConfig(cwd = process.cwd()): AppConfig {
     httpTimeoutMs: env.NEWS_BOT_HTTP_TIMEOUT_MS,
     telegramUserId: env.NEWS_BOT_TELEGRAM_USER_ID,
     telegramBotToken: env.TELEGRAM_BOT_TOKEN,
+    discordBotToken: env.DISCORD_BOT_TOKEN,
+    discordOwnerUserId: env.DISCORD_OWNER_USER_ID,
     openAiApiKey: env.OPENAI_API_KEY,
     xAiApiKey: env.XAI_API_KEY,
     llm: {
@@ -145,6 +167,12 @@ export function loadConfig(cwd = process.cwd()): AppConfig {
       hnNewLimit: env.NEWS_BOT_HN_NEW_LIMIT,
       blueskyMaxPostsPerActor: env.NEWS_BOT_BLUESKY_MAX_POSTS_PER_ACTOR,
       blueskyWatchlist: BLUESKY_WATCHLIST
+    },
+    housingWatcher: {
+      profileDir: path.resolve(projectRoot, env.NEWS_BOT_XHS_PROFILE_DIR),
+      headless: env.NEWS_BOT_XHS_HEADLESS,
+      visionEnabled: Boolean(env.NEWS_BOT_XHS_VISION_ENABLED),
+      maxResultsPerQuery: env.NEWS_BOT_XHS_MAX_RESULTS_PER_QUERY
     },
     sourceUrls: {
       geeknewsRss: "https://news.hada.io/rss/news",

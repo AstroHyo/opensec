@@ -159,8 +159,9 @@ Stores optional LLM execution metadata.
 Purpose:
 
 - provider-aware routing telemetry
-- cost tracking by task class
-- future budget controls
+- record provider-returned token usage without extra model calls
+- estimate per-run USD cost locally from usage metadata
+- support cost tracking by task class and future budget controls
 
 ### `item_enrichments`
 

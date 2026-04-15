@@ -282,8 +282,14 @@ export interface SavedDigestRecord {
   stats: Record<string, unknown>;
 }
 
-export type LlmRunType = "item_enrichment" | "theme_synthesis" | "followup_answer" | "followup_research";
-export type LlmProvider = "openai" | "xai";
+export type LlmRunType =
+  | "item_enrichment"
+  | "theme_synthesis"
+  | "followup_answer"
+  | "followup_research"
+  | "housing_vision"
+  | "housing_adjudication";
+export type LlmProvider = "openai" | "xai" | "unknown";
 export type LlmTaskTier = 0 | 1 | 2 | 3;
 export type LlmTaskKey =
   | "item_enrichment"
@@ -296,7 +302,7 @@ export interface LlmRunRecord {
   id: number;
   profileKey: ProfileKey;
   runType: LlmRunType;
-  taskKey?: LlmTaskKey | null;
+  taskKey?: string | null;
   taskTier?: LlmTaskTier | null;
   provider?: LlmProvider | null;
   modelName: string;

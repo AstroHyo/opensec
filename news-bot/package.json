@@ -14,7 +14,10 @@
     "digest:am": "tsx src/index.ts digest --mode am",
     "digest:pm": "tsx src/index.ts digest --mode pm",
     "followup": "tsx src/index.ts followup",
+    "llm:runs": "tsx src/index.ts llm-runs",
     "fetch": "tsx src/index.ts fetch",
+    "xhs-login": "tsx src/index.ts xhs-login",
+    "xhs-rent-watch": "tsx src/index.ts xhs-rent-watch",
     "test": "vitest run",
     "dry-run:am": "bash ./scripts/dry-run-am.sh",
     "dry-run:pm": "bash ./scripts/dry-run-pm.sh"
@@ -24,6 +27,7 @@
     "cheerio": "^1.0.0",
     "dotenv": "^16.4.7",
     "luxon": "^3.6.1",
+    "playwright": "^1.54.2",
     "rss-parser": "^3.13.0",
     "zod": "^3.24.2"
   },

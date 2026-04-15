@@ -14,15 +14,17 @@ interface StructuredJsonRequest<T> {
   timeoutMs: number;
 }
 
-interface ResponsesInputJsonRequest<T> {
-  apiKey: string;
-  model: string;
-  schemaName: string;
-  schema: Record<string, unknown>;
-  validator: z.ZodType<T>;
-  systemPrompt: string;
-  inputItems: Array<{ type: "text"; text: string } | { type: "image"; imageUrl: string }>;
-  timeoutMs: number;
+interface StructuredJsonResponsesInputRequest<T> extends Omit<StructuredJsonRequest<T>, "userPrompt"> {
+  inputItems: Array<
+    | {
+        type: "text";
+        text: string;
+      }
+    | {
+        type: "image";
+        imageUrl: string;
+      }
+  >;
 }
 
 export interface StructuredJsonResponse<T> {
@@ -172,7 +174,7 @@ export async function generateStructuredJsonWithWebSearch<T>(
 }
 
 export async function generateStructuredJsonWithResponsesInput<T>(
-  input: ResponsesInputJsonRequest<T>
+  input: StructuredJsonResponsesInputRequest<T>
 ): Promise<StructuredJsonResponse<T>> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), input.timeoutMs);
@@ -188,9 +190,22 @@ export async function generateStructuredJsonWithResponsesInput<T>(
       body: JSON.stringify({
         model: input.model,
         instructions: input.systemPrompt,
-        input: input.inputItems.map((item) =>
-          item.type === "text" ? { role: "user", content: [{ type: "input_text", text: item.text }] } : { role: "user", content: [{ type: "input_image", image_url: item.imageUrl }] }
-        ),
+        input: [
+          {
+            role: "user",
+            content: input.inputItems.map((item) =>
+              item.type === "text"
+                ? {
+                    type: "input_text",
+                    text: item.text
+                  }
+                : {
+                    type: "input_image",
+                    image_url: item.imageUrl
+                  }
+            )
+          }
+        ],
         text: {
           format: {
             type: "json_schema",
@@ -210,7 +225,11 @@ export async function generateStructuredJsonWithResponsesInput<T>(
     const payload = (await response.json()) as {
       output_text?: string;
       output?: Array<{
-        content?: Array<{ type?: string; text?: string }>;
+        content?: Array<{
+          type?: string;
+          text?: string;
+          annotations?: Array<{ url?: string; title?: string }>;
+        }>;
       }>;
       usage?: Record<string, unknown>;
       error?: { message?: string };
