@@ -67,7 +67,10 @@ describe("telegram escaping", () => {
     expect(rendered).toContain("AI 맥락:");
     expect(rendered).toContain("OpenAI 각도:");
     expect(rendered).toContain("변화 신호:");
+    expect(rendered).toContain("링크 모음");
+    expect(rendered).toContain("[1] Responses API update\nhttps://openai.com/example");
     expect(rendered).not.toContain("왜 중요한지:");
+    expect(rendered).not.toContain("링크:");
   });
 
   it("prefers cause/effect over generic trend text and suppresses redundant OpenAI angle", () => {
@@ -122,5 +125,7 @@ describe("telegram escaping", () => {
     const rendered = renderTelegramDigest(digest);
     expect(rendered).toContain("변화 신호: 저지연 서브에이전트와 batch workflow에서 소형 모델 채택이 늘어날 것입니다.");
     expect(rendered).not.toContain("OpenAI 각도:");
+    expect(rendered).toContain("링크 모음");
+    expect(rendered).toContain("[1] GPT mini update\nhttps://openai.com/example-mini");
   });
 });

@@ -3,6 +3,7 @@ import type { AppConfig } from "../config.js";
 import { NewsDatabase } from "../db.js";
 import { generateStructuredJsonWithWebSearch } from "../llm/openaiClient.js";
 import { buildResearchAnswerPrompts } from "../llm/promptTemplates.js";
+import { estimateLlmUsageCostUsd, inferLlmProvider, resolveLlmTaskTier } from "../llm/runTelemetry.js";
 import {
   RESEARCH_FOLLOWUP_PROMPT_VERSION,
   researchFollowupJsonSchema,
@@ -87,10 +88,16 @@ export async function answerResearchFollowup(input: {
       }))
     })
   );
+  const modelName = input.config.llm.researchModel;
+  const taskKey = "followup_research.web";
+  const provider = inferLlmProvider(modelName);
   const runId = input.db.startLlmRun({
     profileKey: input.profileKey,
     runType: "followup_research",
-    modelName: input.config.llm.researchModel,
+    taskKey,
+    taskTier: resolveLlmTaskTier("followup_research", taskKey),
+    provider,
+    modelName,
     promptVersion: RESEARCH_FOLLOWUP_PROMPT_VERSION,
     inputHash,
     startedAt
@@ -113,7 +120,13 @@ export async function answerResearchFollowup(input: {
       status: "ok",
       completedAt: input.now.toUTC().toISO() ?? new Date().toISOString(),
       latencyMs: Date.now() - startedMillis,
-      tokenUsage: response.usage ?? null
+      tokenUsage: response.usage ?? null,
+      estimatedCostUsd: estimateLlmUsageCostUsd({
+        provider,
+        modelName,
+        usage: response.usage ?? null,
+        webSearchCalls: 1
+      })
     });
 
     const allowedNumbers = new Set(selectedItems.map((item) => item.number));

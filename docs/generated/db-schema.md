@@ -134,13 +134,23 @@ Stores optional LLM execution metadata.
 
 - `profile_key`
 - `run_type`
+- `task_key`
+- `task_tier`
+- `provider`
 - `model_name`
 - `prompt_version`
 - `input_hash`
 - `status`
 - `latency_ms`
 - `token_usage_json`
+- `estimated_cost_usd`
 - `error_text`
+
+Purpose:
+
+- track which task used which model and provider
+- record provider-returned token usage without extra model calls
+- estimate per-run USD cost locally from usage metadata
 
 ### `item_enrichments`
 

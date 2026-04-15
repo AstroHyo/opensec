@@ -143,7 +143,7 @@ describe("digest enrichment helpers", () => {
     applyItemEnrichment(entry, enrichment);
 
     expect(entry.summary).toBe("Responses API에 실행 환경이 붙으면서 실제 작업 흐름이 더 길어졌습니다.");
-    expect(entry.whyImportant).toContain("기존 integration 코드와 eval harness");
+    expect(entry.whyImportant).toBe("더 구체적인 중요성 설명");
     expect(entry.whatChanged).toContain("실행 환경");
     expect(entry.engineerRelevance).toContain("integration 코드");
     expect(entry.aiEcosystem).toContain("runtime");

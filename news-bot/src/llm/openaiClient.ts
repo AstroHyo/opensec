@@ -12,6 +12,19 @@ interface StructuredJsonRequest<T> {
   timeoutMs: number;
 }
 
+interface StructuredJsonResponsesInputRequest<T> extends Omit<StructuredJsonRequest<T>, "userPrompt"> {
+  inputItems: Array<
+    | {
+        type: "text";
+        text: string;
+      }
+    | {
+        type: "image";
+        imageUrl: string;
+      }
+  >;
+}
+
 export interface StructuredJsonResponse<T> {
   data: T;
   usage?: Record<string, unknown> | null;
@@ -151,6 +164,87 @@ export async function generateStructuredJsonWithWebSearch<T>(
       data: parsed,
       usage: payload.usage ?? null,
       annotations: content.annotations
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function generateStructuredJsonWithResponsesInput<T>(
+  input: StructuredJsonResponsesInputRequest<T>
+): Promise<StructuredJsonResponse<T>> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), input.timeoutMs);
+
+  try {
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${input.apiKey}`
+      },
+      body: JSON.stringify({
+        model: input.model,
+        instructions: input.systemPrompt,
+        input: [
+          {
+            role: "user",
+            content: input.inputItems.map((item) =>
+              item.type === "text"
+                ? {
+                    type: "input_text",
+                    text: item.text
+                  }
+                : {
+                    type: "input_image",
+                    image_url: item.imageUrl
+                  }
+            )
+          }
+        ],
+        text: {
+          format: {
+            type: "json_schema",
+            name: input.schemaName,
+            strict: true,
+            schema: input.schema
+          }
+        },
+        store: false
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`OpenAI Responses request failed: ${response.status} ${await response.text()}`);
+    }
+
+    const payload = (await response.json()) as {
+      output_text?: string;
+      output?: Array<{
+        content?: Array<{
+          type?: string;
+          text?: string;
+          annotations?: Array<{ url?: string; title?: string }>;
+        }>;
+      }>;
+      usage?: Record<string, unknown>;
+      error?: { message?: string };
+    };
+
+    if (payload.error?.message) {
+      throw new Error(payload.error.message);
+    }
+
+    const content = extractResponsesContent(payload);
+    if (!content.text) {
+      throw new Error("OpenAI Responses API did not return structured JSON text");
+    }
+
+    const parsed = input.validator.parse(JSON.parse(content.text));
+    return {
+      data: parsed,
+      usage: payload.usage ?? null
     };
   } finally {
     clearTimeout(timeout);

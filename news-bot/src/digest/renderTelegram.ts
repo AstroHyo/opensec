@@ -3,6 +3,7 @@ import { collapseWhitespace } from "../util/text.js";
 
 export function renderTelegramDigest(result: DigestBuildResult): string {
   const lines: string[] = [result.header, ""];
+  const renderedItems: DigestEntry[] = [];
   let sectionIndex = 1;
 
   for (const section of result.sections) {
@@ -14,6 +15,7 @@ export function renderTelegramDigest(result: DigestBuildResult): string {
     sectionIndex += 1;
 
     for (const item of section.items) {
+      renderedItems.push(item);
       lines.push(...formatItemBlock(item));
       lines.push("");
     }
@@ -22,6 +24,17 @@ export function renderTelegramDigest(result: DigestBuildResult): string {
       for (const bullet of section.bullets) {
         lines.push(`- ${collapseWhitespace(bullet)}`);
       }
+      lines.push("");
+    }
+  }
+
+  if (renderedItems.length > 0) {
+    lines.push(`${sectionIndex}) 링크 모음`);
+    lines.push("");
+
+    for (const item of dedupeRenderedItems(renderedItems)) {
+      lines.push(formatItemLine(item));
+      lines.push(item.primaryUrl);
       lines.push("");
     }
   }
@@ -51,8 +64,7 @@ function formatItemBlock(item: DigestEntry): string[] {
       formatItemLine(item),
       `한줄 요약: ${collapseWhitespace(item.summary)}`,
       `왜 중요한지: ${collapseWhitespace(item.whyImportant)}`,
-      `출처: ${item.sourceLabel}`,
-      `링크: ${item.primaryUrl}`
+      `출처: ${item.sourceLabel}`
     ];
   }
 
@@ -69,8 +81,23 @@ function formatItemBlock(item: DigestEntry): string[] {
   }
 
   lines.push(`변화 신호: ${pickChangeSignal(item)}`);
-  lines.push(`링크: ${item.primaryUrl}`);
   return lines;
+}
+
+function dedupeRenderedItems(items: DigestEntry[]): DigestEntry[] {
+  const seen = new Set<number>();
+  const deduped: DigestEntry[] = [];
+
+  for (const item of items) {
+    if (seen.has(item.itemId)) {
+      continue;
+    }
+
+    seen.add(item.itemId);
+    deduped.push(item);
+  }
+
+  return deduped;
 }
 
 function pickChangeSignal(item: DigestEntry): string {

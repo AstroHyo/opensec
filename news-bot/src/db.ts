@@ -145,6 +145,9 @@ CREATE TABLE IF NOT EXISTS llm_runs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   profile_key TEXT NOT NULL DEFAULT 'tech',
   run_type TEXT NOT NULL,
+  task_key TEXT,
+  task_tier INTEGER,
+  provider TEXT,
   model_name TEXT NOT NULL,
   prompt_version TEXT NOT NULL,
   input_hash TEXT NOT NULL,
@@ -153,6 +156,7 @@ CREATE TABLE IF NOT EXISTS llm_runs (
   status TEXT NOT NULL,
   latency_ms INTEGER,
   token_usage_json TEXT,
+  estimated_cost_usd REAL,
   error_text TEXT
 );
 
@@ -308,6 +312,7 @@ CREATE INDEX IF NOT EXISTS idx_sent_items_item_sent_at ON sent_items(profile_key
 CREATE INDEX IF NOT EXISTS idx_followup_context_digest_number ON followup_context(profile_key, digest_id, item_number);
 CREATE INDEX IF NOT EXISTS idx_source_runs_profile_source_started ON source_runs(profile_key, source_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_llm_runs_profile_type_started ON llm_runs(profile_key, run_type, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_llm_runs_profile_task_started ON llm_runs(profile_key, task_key, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_item_enrichments_item_lookup ON item_enrichments(profile_key, item_id, prompt_version, source_hash);
 CREATE INDEX IF NOT EXISTS idx_digest_enrichments_lookup ON digest_enrichments(profile_key, digest_cache_key, prompt_version);
 CREATE INDEX IF NOT EXISTS idx_article_contexts_item_lookup ON article_contexts(item_id, source_hash);
@@ -344,6 +349,10 @@ export class NewsDatabase {
     this.ensureColumn("followup_context", "profile_key", "TEXT NOT NULL DEFAULT 'tech'");
     this.ensureColumn("source_runs", "profile_key", "TEXT NOT NULL DEFAULT 'tech'");
     this.ensureColumn("llm_runs", "profile_key", "TEXT NOT NULL DEFAULT 'tech'");
+    this.ensureColumn("llm_runs", "task_key", "TEXT");
+    this.ensureColumn("llm_runs", "task_tier", "INTEGER");
+    this.ensureColumn("llm_runs", "provider", "TEXT");
+    this.ensureColumn("llm_runs", "estimated_cost_usd", "REAL");
     this.ensureColumn("item_enrichments", "profile_key", "TEXT NOT NULL DEFAULT 'tech'");
     this.ensureColumn("digest_enrichments", "profile_key", "TEXT NOT NULL DEFAULT 'tech'");
     this.ensureColumn("item_enrichments", "what_changed_ko", "TEXT");
@@ -1114,6 +1123,9 @@ export class NewsDatabase {
   startLlmRun(input: {
     profileKey: ProfileKey;
     runType: LlmRunType;
+    taskKey?: string | null;
+    taskTier?: LlmRunRecord["taskTier"];
+    provider?: LlmRunRecord["provider"];
     modelName: string;
     promptVersion: string;
     inputHash: string;
@@ -1121,10 +1133,31 @@ export class NewsDatabase {
   }): number {
     const result = this.db
       .prepare(
-        `INSERT INTO llm_runs (profile_key, run_type, model_name, prompt_version, input_hash, started_at, status)
-         VALUES (?, ?, ?, ?, ?, ?, 'running')`
+        `INSERT INTO llm_runs (
+           profile_key,
+           run_type,
+           task_key,
+           task_tier,
+           provider,
+           model_name,
+           prompt_version,
+           input_hash,
+           started_at,
+           status
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'running')`
       )
-      .run(input.profileKey, input.runType, input.modelName, input.promptVersion, input.inputHash, input.startedAt);
+      .run(
+        input.profileKey,
+        input.runType,
+        input.taskKey ?? null,
+        input.taskTier ?? null,
+        input.provider ?? null,
+        input.modelName,
+        input.promptVersion,
+        input.inputHash,
+        input.startedAt
+      );
 
     return Number(result.lastInsertRowid);
   }
@@ -1135,12 +1168,13 @@ export class NewsDatabase {
     completedAt: string;
     latencyMs?: number | null;
     tokenUsage?: Record<string, unknown> | null;
+    estimatedCostUsd?: number | null;
     errorText?: string | null;
   }): void {
     this.db
       .prepare(
         `UPDATE llm_runs
-         SET completed_at = ?, status = ?, latency_ms = ?, token_usage_json = ?, error_text = ?
+         SET completed_at = ?, status = ?, latency_ms = ?, token_usage_json = ?, estimated_cost_usd = ?, error_text = ?
          WHERE id = ?`
       )
       .run(
@@ -1148,9 +1182,24 @@ export class NewsDatabase {
         input.status,
         input.latencyMs ?? null,
         input.tokenUsage ? JSON.stringify(input.tokenUsage) : null,
+        input.estimatedCostUsd ?? null,
         input.errorText ?? null,
         input.runId
       );
+  }
+
+  listRecentLlmRuns(profileKey: ProfileKey, limit = 20): LlmRunRecord[] {
+    const rows = this.db
+      .prepare<unknown[], LlmRunRow>(
+        `SELECT *
+         FROM llm_runs
+         WHERE profile_key = ?
+         ORDER BY started_at DESC, id DESC
+         LIMIT ?`
+      )
+      .all(profileKey, limit);
+
+    return rows.map((row) => mapLlmRunRow(row));
   }
 
   getItemEnrichment(
@@ -1684,6 +1733,27 @@ function mapDigestRow(row: DigestRow): SavedDigestRecord {
   };
 }
 
+function mapLlmRunRow(row: LlmRunRow): LlmRunRecord {
+  return {
+    id: row.id,
+    profileKey: row.profile_key as ProfileKey,
+    runType: row.run_type as LlmRunType,
+    taskKey: row.task_key ?? null,
+    taskTier: (row.task_tier as LlmRunRecord["taskTier"]) ?? null,
+    provider: (row.provider as LlmRunRecord["provider"]) ?? null,
+    modelName: row.model_name,
+    promptVersion: row.prompt_version,
+    inputHash: row.input_hash,
+    startedAt: row.started_at,
+    completedAt: row.completed_at ?? null,
+    status: row.status as LlmRunRecord["status"],
+    latencyMs: row.latency_ms ?? null,
+    tokenUsage: row.token_usage_json ? (JSON.parse(row.token_usage_json) as Record<string, unknown>) : null,
+    estimatedCostUsd: row.estimated_cost_usd ?? null,
+    errorText: row.error_text ?? null
+  };
+}
+
 function mapItemEnrichmentRow(row: ItemEnrichmentRow): ItemEnrichmentRecord {
   return {
     id: row.id,
@@ -1904,6 +1974,25 @@ interface DigestRow {
   items_json: string;
   themes_json: string;
   stats_json: string;
+}
+
+interface LlmRunRow {
+  id: number;
+  profile_key: string;
+  run_type: string;
+  task_key?: string | null;
+  task_tier?: number | null;
+  provider?: string | null;
+  model_name: string;
+  prompt_version: string;
+  input_hash: string;
+  started_at: string;
+  completed_at?: string | null;
+  status: string;
+  latency_ms?: number | null;
+  token_usage_json?: string | null;
+  estimated_cost_usd?: number | null;
+  error_text?: string | null;
 }
 
 interface ItemEnrichmentRow {

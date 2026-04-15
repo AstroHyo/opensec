@@ -14,6 +14,7 @@ import { collapseWhitespace, truncate } from "../util/text.js";
 import { renderTelegramDigest } from "../digest/renderTelegram.js";
 import { generateStructuredJson } from "./openaiClient.js";
 import { buildItemEnrichmentPrompts, buildThemeSynthesisPrompts } from "./promptTemplates.js";
+import { estimateLlmUsageCostUsd, inferLlmProvider, resolveLlmTaskTier } from "./runTelemetry.js";
 import {
   digestThemeJsonSchema,
   digestThemeSchema,
@@ -97,10 +98,16 @@ async function enrichItems(
   );
   const startedAt = now.toUTC().toISO() ?? new Date().toISOString();
   const startedMillis = Date.now();
+  const modelName = config.llm.summaryModel;
+  const provider = inferLlmProvider(modelName);
+  const taskKey = "digest_item_enrichment";
   const runId = db.startLlmRun({
     profileKey: items[0]?.profileKey ?? "tech",
     runType: "item_enrichment",
-    modelName: config.llm.summaryModel,
+    taskKey,
+    taskTier: resolveLlmTaskTier("item_enrichment", taskKey),
+    provider,
+    modelName,
     promptVersion: ITEM_ENRICHMENT_PROMPT_VERSION,
     inputHash,
     startedAt
@@ -165,6 +172,11 @@ async function enrichItems(
       completedAt: now.toUTC().toISO() ?? new Date().toISOString(),
       latencyMs: Date.now() - startedMillis,
       tokenUsage: response.usage ?? null,
+      estimatedCostUsd: estimateLlmUsageCostUsd({
+        provider,
+        modelName,
+        usage: response.usage ?? null
+      }),
       errorText: savedCount === missing.length ? null : `Only enriched ${savedCount}/${missing.length} items`
     });
   } catch (error) {
@@ -195,10 +207,16 @@ async function enrichThemes(
 
   const startedAt = now.toUTC().toISO() ?? new Date().toISOString();
   const startedMillis = Date.now();
+  const modelName = config.llm.themesModel;
+  const taskKey = `digest_theme_synthesis.${digest.mode}`;
+  const provider = inferLlmProvider(modelName);
   const runId = db.startLlmRun({
     profileKey: digest.profileKey,
     runType: "theme_synthesis",
-    modelName: config.llm.themesModel,
+    taskKey,
+    taskTier: resolveLlmTaskTier("theme_synthesis", taskKey),
+    provider,
+    modelName,
     promptVersion: THEME_SYNTHESIS_PROMPT_VERSION,
     inputHash: digestCacheKey,
     startedAt
@@ -242,6 +260,11 @@ async function enrichThemes(
       completedAt: now.toUTC().toISO() ?? new Date().toISOString(),
       latencyMs: Date.now() - startedMillis,
       tokenUsage: response.usage ?? null,
+      estimatedCostUsd: estimateLlmUsageCostUsd({
+        provider,
+        modelName,
+        usage: response.usage ?? null
+      }),
       errorText: themes.length > 0 ? null : "Model returned no usable theme bullets"
     });
   } catch (error) {

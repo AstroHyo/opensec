@@ -3,6 +3,7 @@ import type { AppConfig } from "../config.js";
 import { NewsDatabase } from "../db.js";
 import { generateStructuredJson } from "../llm/openaiClient.js";
 import { buildFollowupAnswerPrompts } from "../llm/promptTemplates.js";
+import { estimateLlmUsageCostUsd, inferLlmProvider, resolveLlmTaskTier } from "../llm/runTelemetry.js";
 import {
   ASK_FOLLOWUP_PROMPT_VERSION,
   askFollowupJsonSchema,
@@ -95,10 +96,16 @@ async function maybeAnswerWithLlm(input: {
       sourceLinks: input.selectedItems.map((item) => item.sourceLinks)
     })
   );
+  const modelName = input.config.llm.summaryModel;
+  const taskKey = "followup_answer.ask";
+  const provider = inferLlmProvider(modelName);
   const runId = input.db.startLlmRun({
     profileKey: input.profileKey,
     runType: "followup_answer",
-    modelName: input.config.llm.summaryModel,
+    taskKey,
+    taskTier: resolveLlmTaskTier("followup_answer", taskKey),
+    provider,
+    modelName,
     promptVersion: ASK_FOLLOWUP_PROMPT_VERSION,
     inputHash,
     startedAt
@@ -121,7 +128,12 @@ async function maybeAnswerWithLlm(input: {
       status: "ok",
       completedAt: input.now.toUTC().toISO() ?? new Date().toISOString(),
       latencyMs: Date.now() - startedMillis,
-      tokenUsage: response.usage ?? null
+      tokenUsage: response.usage ?? null,
+      estimatedCostUsd: estimateLlmUsageCostUsd({
+        provider,
+        modelName,
+        usage: response.usage ?? null
+      })
     });
 
     const allowedNumbers = new Set(input.selectedItems.map((item) => item.number));
