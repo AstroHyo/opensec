@@ -1,14 +1,54 @@
-# OpenSec AI News Brief
+# OpenSec News Engine
 
-Deterministic multi-profile news briefing engine for OpenClaw. It fetches curated signals locally, stores state in SQLite, renders Korean digests, and supports profile-aware follow-up from stored digest context. The primary control-plane target is now private Discord, with Telegram kept as a legacy/fallback delivery surface. Workspace-level memory capture and daily-note distillation live in the repo root rather than inside this engine package.
+This package is the deterministic news and signal engine inside OpenSec.
 
-## What it does
+It is not the entire assistant runtime.
+
+The broader OpenSec repository provides:
+
+- OpenClaw-facing skills
+- workspace bootstrap assets
+- memory documents and daily note flow
+- repo and system operation scaffolding
+- future extension paths for other assistant lanes
+
+`news-bot/` is the part that owns retrieval, evidence, scoring, digest assembly, follow-up context, and bounded LLM enrichment for news workflows.
+
+## How It Fits Into OpenSec
+
+The clean boundary is:
+
+- root repository
+  - personal assistant workspace
+  - skills
+  - docs
+  - control-plane setup
+- `news-bot/`
+  - deterministic content engine for news and signals
+
+If OpenSec is the assistant system, `news-bot/` is one engine inside it.
+
+That means this package should remain focused on:
+
+- source adapters
+- normalization and canonicalization
+- SQLite-backed local state
+- deterministic ranking
+- resend suppression
+- article and repo evidence extraction
+- digest rendering
+- follow-up commands over stored context
+- bounded LLM enrichment and research
+
+It should not become the place where all workspace memory, all Discord routing policy, or all future assistant behavior gets mixed together.
+
+## What This Engine Does
 
 - Fetches from three source layers:
   - `primary`: OpenAI official RSS, GitHub Trending
   - `precision`: GeekNews, Techmeme, Hacker News
   - `early_warning`: Bluesky watchlist signals
-- Normalizes and deduplicates by:
+- Normalizes and deduplicates with:
   - canonical URL normalization
   - normalized title hashing
   - fuzzy title similarity fallback
@@ -18,8 +58,10 @@ Deterministic multi-profile news briefing engine for OpenClaw. It fetches curate
   - digest history
   - resend suppression
   - follow-up context
+  - article contexts
   - early-warning signal events and matches
-- Separates persisted context by profile:
+  - LLM run telemetry and budget history
+- Separates persisted digest context by profile:
   - `tech`
   - `finance`
 - Scores deterministically with:
@@ -30,31 +72,33 @@ Deterministic multi-profile news briefing engine for OpenClaw. It fetches curate
   - precision-layer boosts
   - early-warning boosts
   - cross-signal boosts
+- Adds bounded insight layers:
+  - full-read article or repo context extraction
+  - task-tiered LLM enrichment
+  - theme synthesis
+  - explicit research mode
 - Renders channel-ready Korean digests with preserved evidence:
   - canonical link
   - source labels
   - source link list
   - score reasons
   - optional signal links
-- Supports follow-up modes:
-  - deterministic commands such as `show sources for 2`
-  - bounded LLM explanation with `ask <질문>`
-  - opt-in live web research with `research <질문>`
 
-This package is the digest engine, not the entire personal assistant runtime. Discord routing, approvals, coding lanes, and memory capture live in the OpenClaw workspace assets at the repository root.
+## Design Rules
 
-It also hosts a separate Xiaohongshu housing watcher runtime for direct Discord DM alerts. That watcher is isolated from digest ranking and follow-up state.
+The non-negotiables for this package are straightforward:
 
-## Core rules
+- daily digest generation stays deterministic
+- shared evidence can feed multiple profiles, but digest context is profile-scoped
+- precision sources may introduce or strengthen candidates
+- early-warning sources never create standalone digest items
+- LLMs are optional explanation and research layers, not the retrieval core
+- original evidence remains attached even when summaries are enriched
+- digest delivery should still work when enrichment is unavailable
 
-- Daily digest generation stays deterministic.
-- Shared evidence can feed multiple profiles, but digest context is profile-scoped.
-- Precision sources may introduce or strengthen candidates.
-- Early-warning sources never create standalone digest items.
-- LLMs are optional explanation and research layers, not the retrieval core.
-- Original evidence is preserved even when summaries are enriched.
+## Current Follow-up Surface
 
-## Supported commands
+Supported commands:
 
 - `brief now`
 - `am brief now`
@@ -71,14 +115,44 @@ It also hosts a separate Xiaohongshu housing watcher runtime for direct Discord 
 - `xhs-rent-watch`
 - `llm-runs`
 
-CLI profile examples:
+The first group is news-specific follow-up over stored digest context.
 
-- `pnpm --dir ./news-bot digest -- --profile tech --mode am`
-- `pnpm --dir ./news-bot digest -- --profile finance --mode am`
-- `pnpm --dir ./news-bot followup -- --profile tech "show sources for 2"`
-- `pnpm --dir ./news-bot followup -- --profile finance "ask 오늘 macro 항목만 다시 요약해줘"`
+The Xiaohongshu watcher commands are a separate bounded subsystem that happens to live in the same package because it shares:
 
-## Project layout
+- scheduling needs
+- delivery plumbing
+- SQLite state
+- bounded LLM / vision patterns
+
+## Role Of The LLM Layer
+
+The LLM layer is downstream of deterministic retrieval.
+
+Current intended flow:
+
+```text
+curated sources
+-> normalize and canonicalize
+-> dedupe and merge
+-> SQLite state
+-> deterministic scoring
+-> recent 72h suppression
+-> shortlist
+-> full-read article / repo context
+-> task-tiered enrichment
+-> digest render
+-> follow-up from stored context
+```
+
+Important consequences:
+
+- the model does not free-search for daily candidates
+- retrieval quality is not hidden inside one prompt
+- enrichment is cacheable and debuggable
+- follow-up quality improves because article context is already stored
+- budget controls can be applied by task tier
+
+## Package Layout
 
 ```text
 news-bot/
@@ -104,6 +178,15 @@ news-bot/
     digest/
       buildDigest.ts
       renderTelegram.ts
+    evidence/
+      articleContext.ts
+    llm/
+      enrichDigest.ts
+      taskRouter.ts
+      promptTemplates.ts
+      schemas.ts
+      openaiClient.ts
+      runTelemetry.ts
     sources/
       index.ts
       layers.ts
@@ -121,6 +204,7 @@ news-bot/
       followup.ts
       followupAnswer.ts
       followupResearch.ts
+      showLlmRuns.ts
       watchXiaohongshuRent.ts
     housing/
       constants.ts
@@ -136,15 +220,18 @@ news-bot/
       text.ts
       timeWindow.ts
   tests/
+    articleContext.test.ts
+    dbMigrations.test.ts
     dedupe.test.ts
     followup.test.ts
+    llm.test.ts
+    llmRunTracking.test.ts
     profileNamespaces.test.ts
+    recentSuppression.test.ts
     render.test.ts
     scoring.test.ts
     sourcingLayers.test.ts
-skills/
-  ai_news_brief/
-    SKILL.md
+    taskRouter.test.ts
 ```
 
 ## Setup
@@ -162,6 +249,7 @@ skills/
    - optionally `NEWS_BOT_TELEGRAM_USER_ID`
    - optionally `TELEGRAM_BOT_TOKEN`
    - optionally `OPENAI_API_KEY`
+   - optionally `XAI_API_KEY`
 4. Run validation.
    ```bash
    pnpm --dir ./news-bot check
@@ -170,7 +258,7 @@ skills/
    bash ./news-bot/scripts/dry-run-pm.sh
    ```
 
-## Environment variables
+## Environment Variables
 
 Base configuration:
 
@@ -227,7 +315,7 @@ Current default tier routing:
 
 Bluesky ships disabled by default, and the checked-in watchlist starts empty. Populate [`src/sources/blueskyWatchlist.ts`](./src/sources/blueskyWatchlist.ts) only when you want explicit early-warning actors.
 
-## Local commands
+## Local Commands
 
 Fetch the latest source state only:
 
@@ -259,124 +347,18 @@ Inspect recent LLM runs:
 pnpm --dir ./news-bot llm:runs -- --profile tech --limit 20
 ```
 
-Run the Xiaohongshu rent watcher:
+## Where To Read Next
 
-```bash
-pnpm --dir ./news-bot xhs-login
-pnpm --dir ./news-bot xhs-rent-watch
-```
+If you want the bigger picture:
 
-Watcher notes:
+- [root README](../README.md)
+- [ARCHITECTURE.md](../ARCHITECTURE.md)
+- [OpenClaw personal control plane note](../docs/design-docs/openclaw-personal-control-plane.md)
 
-- run `pnpm --dir ./news-bot xhs-login` first to open a visible Xiaohongshu login window backed by the persistent profile
-- `NEWS_BOT_XHS_HEADLESS=false` is the recommended default because Xiaohongshu is more likely to gate headless sessions with captcha or risk checks
-- run the housing watcher on a slower cadence such as every 30 minutes instead of every 10 minutes
-- if Chromium is not installed yet, run `pnpm --dir ./news-bot exec playwright install chromium`
-- direct Discord DM delivery requires `DISCORD_BOT_TOKEN` and `DISCORD_OWNER_USER_ID`
-- OCR / vision is optional and only runs when both `OPENAI_API_KEY` and `NEWS_BOT_XHS_VISION_ENABLED=true` are set
+If you want the engine internals:
 
-## Follow-up behavior
-
-`ask`:
-
-- uses stored digest evidence only
-- can explain, compare, or reframe items more naturally
-- falls back cleanly when LLM is disabled
-
-`research`:
-
-- runs only when the user explicitly asks
-- can use bounded live web search with citations
-- can reuse stored unmatched Bluesky URL signals as hints
-- must not change how the daily digest itself is generated
-
-## OpenClaw and Discord
-
-Patch your OpenClaw personal config with the Discord-first shape shown in [`../openclaw.personal.example.jsonc`](../openclaw.personal.example.jsonc):
-
-```jsonc
-{
-  "channels": {
-    "discord": {
-      "enabled": true,
-      "token": "replace-me",
-      "groupPolicy": "allowlist"
-    }
-  },
-  "cron": {
-    "enabled": true,
-    "sessionRetention": "24h",
-    "runLog": {
-      "maxBytes": "2mb",
-      "keepLines": 2000
-    }
-  }
-}
-```
-
-Notes:
-
-- Keep one visible coordinator and let builder/researcher behavior stay hidden behind delegation.
-- Start or attach OpenClaw in the workspace root so `skills/ai_news_brief/SKILL.md` is available.
-- The current EC2 deployment path is `/srv/openclaw/workspace-personal/projects/opensec`.
-- On OpenClaw `2026.4.x`, prefer `openclaw agents bind --agent main --bind discord` over hand-editing `bindings` in the config file.
-- For a solo private guild, `requireMention: true` is a good starting posture, but switching to `false` can make the day-to-day UX much better once permissions and routing are stable.
-
-## Workspace memory loop
-
-The Discord-first control plane now ships a lightweight memory loop outside the engine package:
-
-- raw daily notes in `workspace-template/memory/YYYY-MM-DD.md`
-- curated durable memory in `workspace-template/MEMORY.md`
-- capture and distillation helpers in `../skills/memory_ops/` and `../scripts/ensure-daily-memory-note.sh`
-
-That keeps the digest engine deterministic while still letting the OpenClaw workspace remember stable preferences and operating facts over time.
-
-## Installing Discord cron jobs
-
-Use the helper script:
-
-```bash
-DISCORD_TECH_BRIEF_CHANNEL_ID=123456789012345678 \
-DISCORD_FINANCE_BRIEF_CHANNEL_ID=223456789012345678 \
-bash ./news-bot/scripts/install-discord-cron.sh
-```
-
-The script computes the workspace root and `news-bot` path automatically, so you do not need to hard-code `/opt/ai-news-brief`. It installs:
-
-- `Tech Brief AM` at `10:00` America/New_York
-- `Tech Brief PM` at `20:00` America/New_York
-- `Finance Brief AM` at `10:30` America/New_York
-- `Finance Brief PM` at `20:30` America/New_York
-
-Each cron prompt tells OpenClaw to run the local profile-aware digest command via `exec` and return only the script output.
-
-Legacy Telegram cron setup remains available through [`./scripts/install-cron.sh`](./scripts/install-cron.sh).
-
-## Legacy Telegram setup
-
-1. Create a bot with `@BotFather`.
-2. Put the token in `TELEGRAM_BOT_TOKEN`.
-3. DM the bot once from your personal account.
-4. Get your numeric Telegram user ID.
-5. Set that ID in:
-   - `NEWS_BOT_TELEGRAM_USER_ID`
-   - OpenClaw `allowFrom`
-   - `TELEGRAM_USER_ID` when installing cron
-
-## Design choices
-
-- OpenAI uses the official RSS feed because the newsroom HTML is unreliable behind Cloudflare in headless VPS environments.
-- GeekNews, Techmeme, and Hacker News are precision signals. They help discovery and ranking, but they are not treated as primary truth by themselves.
-- Bluesky is watchlist-based, disabled by default, and only boosts or annotates already-matched stories.
-- The digest can ship without any LLM.
-- LLM enrichment runs only after deterministic fetch, merge, ranking, and item selection.
-- Live `research` is opt-in and happens after the digest already exists.
-
-## Acceptance checks
-
-- `pnpm --dir ./news-bot check`
-- `pnpm --dir ./news-bot test`
-- `bash ./news-bot/scripts/dry-run-am.sh`
-- `bash ./news-bot/scripts/dry-run-pm.sh`
-- `pnpm --dir ./news-bot followup -- --profile tech "show sources for 2"`
+- [`src/db.ts`](./src/db.ts)
+- [`src/scoring.ts`](./src/scoring.ts)
+- [`src/digest/buildDigest.ts`](./src/digest/buildDigest.ts)
+- [`src/llm/taskRouter.ts`](./src/llm/taskRouter.ts)
+- [`../docs/generated/db-schema.md`](../docs/generated/db-schema.md)

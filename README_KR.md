@@ -2,247 +2,240 @@
 
 # OpenSec
 
-**Discord 기반 personal control plane과 deterministic multi-profile 뉴스 브리프**
+**뉴스, 리서치, 코딩, 자동화를 위한 single-owner personal AI assistant workspace**
 
-Curated source를 수집하고, 로컬 상태를 기준으로 우선순위를 정하고, 한국어 digest를 만들고, 필요할 때만 LLM을 설명 레이어로 붙입니다. Discord에서는 보이는 coordinator 하나를 front door로 두고, 그 뒤에 coding, research, memory-distillation lane을 둡니다.
+deterministic해야 하는 부분은 deterministic engine으로 두고, 레버리지가 큰 지점에만 bounded LLM을 붙입니다. 작은 뉴스 브리프에서 시작해도, 결국은 실제 개인 control plane으로 확장될 수 있는 구조를 목표로 합니다.
 
 [English README](./README.md) • [아키텍처](./ARCHITECTURE.md) • [뉴스 엔진](./news-bot/README.md) • [DB 스키마](./docs/generated/db-schema.md)
 
 </div>
 
-## OpenSec는 무엇이 다른가
+## OpenSec는 무엇인가
 
-OpenSec의 핵심 원칙은 분명합니다.
+OpenSec는 단순한 뉴스 봇 저장소가 아닙니다.
 
-> daily digest는 모델의 자유 탐색이 아니라 deterministic retrieval과 scoring에서 나와야 합니다.
+이 저장소는 한 명의 owner를 위한 personal assistant system의 public-safe foundation입니다.
 
-이 원칙 덕분에 다음을 지킬 수 있습니다.
+- `news-bot/`은 deterministic한 뉴스/시그널 엔진입니다.
+- `skills/`는 OpenClaw가 사용할 명시적인 작업 entry point입니다.
+- `workspace-template/`는 장기적으로 유지되는 personal workspace의 기본 형태입니다.
+- `docs/`는 설계 원칙, 실행 계획, 제품 문서를 장기 기억처럼 보존하는 계층입니다.
 
-- 재현 가능한 ranking
-- 디버깅 가능한 로컬 상태
-- source attribution과 evidence 보존
-- 안전한 non-LLM fallback
-- 저장된 digest context에 근거한 follow-up
+핵심 아이디어는 단순합니다.
 
-LLM이 있으면 설명 품질이 좋아지고, 없어도 digest는 계속 나가야 합니다.
+> retrieval, state, operations를 하나의 거대한 prompt의 부수효과로 처리하지 말고, 시스템 컴포넌트로 취급한다.
 
-## 핵심 특징
+그래서 이 저장소는 뉴스 외에도 다음을 자연스럽게 지원할 수 있습니다.
 
-| 기능 | 의미 |
+- scheduled brief
+- bounded follow-up research
+- repo와 coding task
+- memory capture와 distillation
+- 작은 personal automation
+- future private sibling assistant
+  - 예: training bot
+
+## 전체 구조
+
+시스템은 크게 세 층으로 보는 것이 가장 정확합니다.
+
+| 층 | 역할 | 예시 |
+| --- | --- | --- |
+| Front doors | 사용자가 말을 거는 표면 | Discord, Telegram fallback, shell, Codex |
+| Workspace control plane | 라우팅, 승인, 메모리, skill, cron | OpenClaw workspace, `skills/`, `workspace-template/` |
+| Deterministic engines / scripts | 실제 도메인 로직 | `news-bot/`, watcher, repo script, future project engine |
+
+실제로는 이렇게 이해하면 됩니다.
+
+- OpenClaw는 always-on gateway이자 coordinator입니다.
+- Codex는 같은 repo를 직접 다루는 coding / operator surface입니다.
+- 이 저장소는 그 위에서 돌아가는 engine, skill, script, doc를 담는 shared system of record입니다.
+
+## 지금 이미 할 수 있는 것
+
+| capability lane | 현재 구현된 것 |
 | --- | --- |
-| Deterministic daily digest | curated source, normalization, dedupe, SQLite state, explicit scoring |
-| Evidence preservation | canonical URL, source label, source links, score reasons를 유지 |
-| Multi-profile engine | `tech`와 `finance` profile이 evidence를 공유하면서도 다른 digest context를 유지 |
-| Discord-first control plane | private Discord server와 DM approval을 전제로 한 workspace 자산 포함 |
-| Plain-text digest output | Discord, Telegram, shell 어디로도 전달 가능한 텍스트 digest |
-| Optional LLM layer | item enrichment, theme synthesis, ask, research |
-| Daily memory loop | Discord 대화를 바로 장기 기억으로 넣지 않고 daily note를 거쳐 curated memory로 올림 |
-| Private control plane support | OpenClaw workspace 자산과 Discord 운영 흐름 포함 |
+| Daily news brief | SQLite state, scoring, resend suppression, Korean rendering이 있는 deterministic `tech` / `finance` digest |
+| Follow-up Q&A | `expand N`, `show sources for N`, `today themes`, `ask <질문>`, `research <질문>` |
+| Repo / coding work | `code_ops`, `repo_ops`, `system_ops` 기반의 bounded remote execution scaffold |
+| Memory loop | `workspace-template/`와 `skills/memory_ops/` 기반의 daily note + curated memory 흐름 |
+| Specialized automation | Xiaohongshu housing watcher 같은 별도 bounded runtime |
+| Cost-aware LLM use | task-tiered routing, usage telemetry, budget control |
+| Safe extension path | 새 skill, script, deterministic engine을 시스템을 깨지 않고 추가 가능 |
 
-## 작동 원리
-
-```mermaid
-flowchart LR
-    A["Curated sources"] --> B["Source adapters"]
-    B --> C["Normalize and canonicalize"]
-    C --> D["Deduplicate and merge"]
-    D --> E[("SQLite state")]
-    E --> F["Deterministic scoring"]
-    F --> G["최근 72시간 suppression gate"]
-    G --> H["Digest shortlist"]
-    H --> I["원문 / README evidence extraction"]
-    I --> J["Task router"]
-    J --> K["Tier 1: Grok fast reasoning"]
-    J --> L["Tier 2: GPT-4.1"]
-    J --> M["Tier 3: GPT-5.4 mini"]
-    K --> N["구조화 enrichment / synthesis"]
-    L --> N
-    M --> O["명시적 research 전용"]
-    N --> P["Plain-text digest renderer"]
-    O --> Q["Research answer renderer"]
-    P --> R["Discord, Telegram, or shell output"]
-    E --> S["Stored follow-up context"]
-    E --> T["LLM run telemetry / cost history"]
-    T --> J
-    J --> U["Budget guard / fallback policy"]
-    S --> V["Deterministic follow-up"]
-    S --> W["Ask mode"]
-    S --> X["Research mode"]
-    U --> N
-    U --> O
-```
-
-중요한 경계는 LLM의 위치입니다.
-
-- retrieval은 deterministic하게 유지합니다.
-- 최근 72시간 중복 억제는 section assembly 전에 처리합니다.
-- candidate generation은 bounded set으로 제한합니다.
-- enrichment는 scoring과 evidence extraction 이후에만 붙습니다.
-- 모델 선택은 호출 위치가 아니라 task tier로 결정합니다.
-- enrichment 실패가 delivery를 막으면 안 됩니다.
-
-## 전체 아키텍처
+## Mental Model
 
 ```mermaid
 flowchart TB
-    subgraph Sources["Curated inputs"]
-        S1["GeekNews RSS"]
-        S2["OpenAI News RSS"]
-        S3["GitHub Trending"]
+    U["You"]
+
+    subgraph Surfaces["User surfaces"]
+        D["Discord / DM"]
+        T["Telegram fallback"]
+        C["Codex"]
+        S["Shell / cron"]
     end
 
-    subgraph Engine["news-bot/"]
-        SA["src/sources/"]
-        U["src/util/"]
-        DB["src/db.ts + SQLite"]
-        SC["src/scoring.ts"]
-        SUP["72h suppression gate"]
-        EV["src/evidence/"]
-        DG["src/digest/"]
-        CM["src/commands/"]
-        TR["src/llm/taskRouter.ts"]
-        LLM["src/llm/ providers + prompts"]
-        TL["llm_runs telemetry + budget checks"]
+    subgraph Workspace["Personal workspace / control plane"]
+        O["OpenClaw coordinator"]
+        K["skills/"]
+        M["memory + notes"]
+        A["approval + routing policy"]
     end
 
-    subgraph Control["Discord / OpenClaw layer"]
-        SK["skills/"]
-        WS["workspace-template/"]
-        OC["OpenClaw orchestration"]
-        DC["Discord server + DM"]
+    subgraph Engines["Project engines and scripts"]
+        N["news-bot/"]
+        R["repo and coding workflows"]
+        W["watchers and automations"]
+        P["future private sibling assistants"]
     end
 
-    S1 --> SA
-    S2 --> SA
-    S3 --> SA
-    SA --> U
-    U --> DB
-    DB --> SC
-    SC --> SUP
-    SUP --> DG
-    SUP --> EV
-    EV --> TR
-    DB --> TR
-    TR --> LLM
-    LLM --> DG
-    LLM --> TL
-    TL --> TR
-    DB --> CM
-    DG --> CM
-    CM --> OC
-    SK --> OC
-    WS --> OC
-    OC --> DC
+    U --> D
+    U --> T
+    U --> C
+    U --> S
+
+    D --> O
+    T --> O
+    S --> O
+    C --> N
+    C --> R
+
+    O --> K
+    O --> M
+    O --> A
+
+    K --> N
+    K --> R
+    K --> W
+    K --> P
 ```
 
-## 현재 구현된 범위
+중요한 포인트는 `news-bot/`이 전체 assistant 구조 안의 한 엔진이라는 점입니다.
 
-이미 포함된 기능:
+## 설계 관점
 
-- curated source ingestion
-- `tech` / `finance` profile 기반 digest generation
-- normalization, canonicalization, deduplication
-- precision / early-warning sourcing layer
-- SQLite 기반 상태 저장
-- deterministic ranking과 resend suppression
-- 한국어 digest 렌더링
-- 저장된 context 기반 follow-up command
-- optional LLM item enrichment와 theme synthesis
-- stored evidence 기반 `ask`
-- bounded live search와 cited links를 사용하는 `research`
-- OpenClaw 개인 Discord 워크스페이스 bootstrap 자산
-- Discord 대화를 위한 daily note capture와 memory distillation scaffold
+저장소 레벨의 설계 선택은 다음과 같습니다.
 
-아직 확장 중이거나 계획된 영역:
+- deterministic retrieval을 model enrichment보다 앞에 둡니다.
+- evidence와 local state를 SQLite에 보존합니다.
+- non-LLM fallback이 항상 살아 있어야 합니다.
+- visible bot은 여러 개보다 하나의 coordinator가 낫습니다.
+- skill과 script는 prompt-only magic이 아니라 bounded action을 노출해야 합니다.
+- future private assistant는 이 repo 안에 숨겨 넣지 않고, 옆의 private sibling으로 둡니다.
 
-- LLM rerank calibration
-- richer Discord thread delegation과 standing orders
-- VPS 및 운영 자동화 고도화
+이 원칙이 뉴스 시스템에도 그대로 반영됩니다.
 
-## 지원 소스
+- daily candidate discovery는 deterministic합니다.
+- dedupe와 resend suppression은 data layer에서 처리합니다.
+- full-read article context는 local cache에 저장합니다.
+- LLM call은 task tier로 라우팅합니다.
+- follow-up answer는 저장된 evidence를 재사용합니다.
 
-`tech`
+같은 철학 덕분에 이 repo는 뉴스 이외의 작업에도 자연스럽게 확장됩니다.
 
-- OpenAI News RSS
-- GitHub Trending
-- GeekNews
-- Techmeme
-- Hacker News
-- Bluesky watchlist signal
-  - early-warning 전용
-  - 기본값은 비활성
+## 왜 이 구조가 확장에 유리한가
 
-`finance`
+OpenSec는 owner와 함께 커지도록 설계되어 있습니다.
 
-- Federal Reserve press
-- SEC press
-- Treasury press
-- BLS releases
-  - CPI
-  - Jobs
-  - PPI
-  - ECI
-- major-company SEC filings
+보통은 다음 순서로 확장됩니다.
 
-## Discord 운영 방식
+1. 로컬 digest generation으로 시작
+2. OpenClaw와 private Discord front door 추가
+3. repo / system skill 추가
+4. memory capture와 daily distillation 추가
+5. 더 많은 bounded automation이나 private sibling assistant 추가
 
-| 채널 | 역할 | 보통 하는 일 |
-| --- | --- | --- |
-| `#assistant` | front door | 일반 질문, triage, 짧은 응답 |
-| `#tech-brief` | `tech` digest 전용 채널 | `expand 2`, `show sources for 2`, 짧은 `ask` |
-| `#finance-brief` | `finance` digest 전용 채널 | macro 요약, source 확인, 짧은 `ask` |
-| `#research` | 장문 설명과 명시적 live research | `research 2번 더 찾아줘` |
-| `#coding` | repo 작업과 실행 lane | 테스트, 브랜치, 파일 수정 요청 |
-| `DM` | 민감한 승인과 private escalation | approvals, secrets, 개인 선호 |
+workspace, skills, engines, docs가 분리되어 있기 때문에 새 capability를 뉴스 prompt 안에 우겨 넣지 않아도 됩니다.
 
-1인용 private guild라면 처음에는 `requireMention: true`로 시작하고, 라우팅이 안정되면 `false`로 바꿔 멘션 없이 듣게 만드는 것이 자연스럽습니다.
+깔끔한 확장 예시는 다음과 같습니다.
 
-## Memory 루프
-
-OpenSec는 Discord 대화를 바로 장기 메모리에 던지지 않습니다.
-
-대신 아래 2단계로 다룹니다.
-
-- raw 또는 semi-structured note는 `memory/YYYY-MM-DD.md`
-- 안정된 선호, 반복 규칙, durable fact는 `MEMORY.md`
-
-지원 자산:
-
-- [`skills/memory_ops/`](./skills/memory_ops)
-- [`scripts/ensure-daily-memory-note.sh`](./scripts/ensure-daily-memory-note.sh)
-- [`workspace-template/memory/README.md`](./workspace-template/memory/README.md)
-
-Heartbeat는 아직 보수적으로 두고 있습니다. 현재 기준은 "일단 capture하고, 승격은 의도적으로 한다"에 가깝습니다.
-
-## Follow-up 모드
-
-| 모드 | 예시 | 설명 |
-| --- | --- | --- |
-| Deterministic | `openai only` | 최신 digest context에서 OpenAI 관련 항목만 보여줌 |
-| Deterministic | `repo radar` | 저장된 digest context에서 repo 중심 항목을 보여줌 |
-| Deterministic | `today themes` | 최신 저장 theme bullet을 반환 |
-| Deterministic | `expand 2` | 최신 저장 digest만 사용 |
-| Deterministic | `show sources for 2` | 저장된 evidence 링크를 반환 |
-| Deterministic | `why important 2` | 저장된 score reasoning 설명 |
-| Ask | `ask 오늘 OpenAI 항목만 다시 요약해줘` | 저장된 digest evidence를 사용하고, 가능하면 LLM으로 설명을 보강 |
-| Research | `research 2번 항목을 더 깊게 조사해줘` | 명시적 요청일 때만 live research와 cited links 사용 |
+- 새 deterministic engine을 `projects/` 또는 이 repo 아래에 추가
+- 새 skill을 `skills/` 아래에 추가
+- 새 bounded automation script를 `scripts/` 아래에 추가
+- private training bot용 private workspace 또는 private repo를 별도로 추가
 
 ## 저장소 구조
 
 | 경로 | 역할 |
 | --- | --- |
-| `news-bot/` | 수집, 저장, 점수화, digest 생성, follow-up 처리까지 담당하는 product engine |
-| `skills/` | OpenClaw에서 사용하는 workspace skill |
-| `docs/design-docs/` | 장기적인 설계 원칙과 architecture note |
+| `news-bot/` | scoring, evidence, follow-up, LLM routing, channel-friendly rendering을 포함한 deterministic news engine |
+| `skills/` | OpenClaw에서 사용하는 뉴스, 코드, repo, memory, system task용 skill |
+| `workspace-template/` | memory file과 operator document를 포함한 personal workspace scaffold |
+| `scripts/` | workspace bootstrap, daily note helper, VPS bootstrap 등 운영 script |
+| `docs/design-docs/` | 장기적인 system design note |
 | `docs/product-specs/` | 사용자 관점의 동작 명세 |
-| `docs/exec-plans/` | active / completed execution plan |
-| `docs/generated/` | DB schema 같은 파생 문서 |
-| `scripts/` | workspace bootstrap 및 운영 스크립트 |
-| `workspace-template/` | OpenClaw 개인 workspace 기본 scaffold |
+| `docs/exec-plans/` | active / completed implementation plan |
+| `docs/generated/` | DB schema 같은 derived reference |
+
+## 현재 엔진과 작업 lane
+
+### 1. News engine
+
+`news-bot/`은 현재 다음을 제공합니다.
+
+- curated feed adapter
+- normalization, canonicalization, dedupe
+- SQLite-backed raw item / normalized item / digest / follow-up context / telemetry
+- deterministic ranking
+- 최근 72시간 resend suppression
+- article / repo full-read context extraction
+- Korean digest rendering
+- bounded LLM enrichment와 research
+
+### 2. Workspace skills
+
+현재 public workspace skill은 다음과 같습니다.
+
+- [`skills/ai_news_brief/`](./skills/ai_news_brief/)
+- [`skills/code_ops/`](./skills/code_ops/)
+- [`skills/repo_ops/`](./skills/repo_ops/)
+- [`skills/memory_ops/`](./skills/memory_ops/)
+- [`skills/system_ops/`](./skills/system_ops/)
+
+의도는 단순합니다. remote execution을 이해 가능하고 audit 가능하게 유지하는 것입니다.
+
+### 3. Memory loop
+
+메모리 모델은 의도적으로 보수적입니다.
+
+- raw daily note는 `memory/YYYY-MM-DD.md`
+- 안정된 선호와 durable operating fact는 `MEMORY.md`
+
+모든 대화를 바로 장기 기억으로 승격시키지 않습니다.
+
+### 4. Private extension
+
+이 public repo는 private sibling과 공존하도록 설계되어 있습니다.
+
+예를 들어:
+
+- private training bot
+- private owner memory
+- private operational export
+- secret과 hidden rule
+
+이런 것들은 OpenSec 안에 직접 넣는 것이 아니라 private workspace 또는 private repo로 분리하는 것이 맞습니다.
+
+## OpenClaw와 Codex의 역할
+
+둘 다 쓸 때의 경계는 다음처럼 잡는 것이 가장 깔끔합니다.
+
+| 도구 | 가장 잘하는 일 |
+| --- | --- |
+| OpenClaw | always-on gateway, Discord/DM front door, approval, cron, memory, tool orchestration |
+| Codex | repo 내부 직접 구현, 코드 수정, 디버깅, 테스트, 문서 업데이트 |
+| OpenSec repo | deterministic logic, skill, script, doc를 담는 shared system of record |
+
+즉:
+
+- Codex + shell만으로도 로컬 실행이 가능합니다.
+- 같은 repo를 OpenClaw workspace 아래 붙이면 always-on assistant로도 쓸 수 있습니다.
+- `news bot`과 `coding assistant` 중 하나만 택할 필요가 없습니다.
 
 ## 빠른 시작
 
-### 1. 뉴스 엔진 로컬 실행
+### 1. deterministic engine 로컬 실행
 
 ```bash
 cd ./news-bot
@@ -251,149 +244,63 @@ pnpm approve-builds
 cp .env.example .env
 pnpm test
 pnpm digest -- --profile tech --mode am
-pnpm digest -- --profile finance --mode am
 pnpm followup -- --profile tech "expand 1"
 ```
 
 `pnpm approve-builds`에서 native package 허용이 필요하면 `better-sqlite3`와 `esbuild`를 승인하면 됩니다.
 
-자주 쓰는 명령:
-
-```bash
-pnpm --dir ./news-bot fetch
-pnpm --dir ./news-bot digest -- --profile tech --mode am
-pnpm --dir ./news-bot digest -- --profile tech --mode pm
-pnpm --dir ./news-bot digest -- --profile finance --mode am
-pnpm --dir ./news-bot digest -- --profile finance --mode pm
-pnpm --dir ./news-bot dry-run:am
-pnpm --dir ./news-bot dry-run:pm
-pnpm --dir ./news-bot followup -- --profile tech "openai only"
-pnpm --dir ./news-bot followup -- --profile tech "repo radar"
-pnpm --dir ./news-bot followup -- --profile tech "today themes"
-pnpm --dir ./news-bot followup -- --profile tech "show sources for 2"
-pnpm --dir ./news-bot followup -- --profile tech "ask 오늘 OpenAI 항목만 다시 요약해줘"
-pnpm --dir ./news-bot followup -- --profile finance "ask 오늘 macro 항목만 다시 요약해줘"
-pnpm --dir ./news-bot followup -- --profile tech "research 2번 항목을 더 깊게 조사해줘"
-```
-
-### 2. 환경 변수 설정
-
-로컬 CLI 확인만 할 때는 기본값만으로도 시작할 수 있습니다.
-
-실제 Discord / OpenClaw delivery를 붙이려면 OpenClaw 설정 쪽에 아래를 채워야 합니다.
-
-- Discord bot token
-- Discord server ID
-- Discord channel IDs
-- owner Discord user ID
-
-Telegram을 fallback으로 유지할 때만 아래 값이 필요합니다.
-
-- `NEWS_BOT_TELEGRAM_USER_ID`
-- `TELEGRAM_BOT_TOKEN`
-
-선택적 LLM 관련 변수:
-
-- `OPENAI_API_KEY`
-- `NEWS_BOT_DEFAULT_PROFILE`
-- `NEWS_BOT_LLM_ENABLED`
-- `NEWS_BOT_LLM_THEMES_ENABLED`
-- `NEWS_BOT_LLM_MODEL_SUMMARY`
-- `NEWS_BOT_LLM_MODEL_THEMES`
-- `NEWS_BOT_LLM_MODEL_RESEARCH`
-
-### 3. 개인 Discord control plane으로 확장
-
-이 저장소에는 OpenSec를 private OpenClaw workspace 안에서 운영하기 위한 자산도 들어 있습니다.
-
-주요 파일:
-
-- [`openclaw.personal.example.jsonc`](./openclaw.personal.example.jsonc)
-- [`scripts/setup-personal-workspace.sh`](./scripts/setup-personal-workspace.sh)
-- [`scripts/ensure-daily-memory-note.sh`](./scripts/ensure-daily-memory-note.sh)
-- [`workspace-template/`](./workspace-template)
-- [`skills/ai_news_brief/`](./skills/ai_news_brief)
-- [`skills/code_ops/`](./skills/code_ops)
-- [`skills/memory_ops/`](./skills/memory_ops)
-- [`skills/repo_ops/`](./skills/repo_ops)
-- [`skills/system_ops/`](./skills/system_ops)
-
-기본 bootstrap:
+### 2. personal workspace bootstrap
 
 ```bash
 bash ./scripts/setup-personal-workspace.sh
 ```
 
+이 스크립트는 OpenClaw가 쓰게 될 기본 workspace 형태를 준비합니다.
+
+- operator document
+- memory file
+- public skill
+- expected project layout
+
+### 3. OpenClaw에 연결
+
+핵심 파일:
+
+- [`openclaw.personal.example.jsonc`](./openclaw.personal.example.jsonc)
+- [`scripts/setup-personal-workspace.sh`](./scripts/setup-personal-workspace.sh)
+- [`scripts/ensure-daily-memory-note.sh`](./scripts/ensure-daily-memory-note.sh)
+- [`workspace-template/`](./workspace-template/)
+
 그 다음:
 
-1. OpenClaw 설정 예제를 복사합니다.
-2. Discord bot token, server ID, channel ID, owner ID를 채웁니다.
-3. OpenClaw gateway를 실행합니다.
-4. `openclaw agents bind --agent main --bind discord`로 Discord를 main agent에 바인딩합니다.
-5. 이 skill들을 포함한 personal workspace를 OpenClaw가 보도록 연결합니다.
-6. `#tech-brief`와 `#finance-brief`용 cron을 설치합니다.
-7. `bash ./scripts/ensure-daily-memory-note.sh`로 첫 daily note를 만듭니다.
+1. example OpenClaw config 복사
+2. Discord 또는 Telegram credential 입력
+3. OpenClaw gateway 시작
+4. personal workspace 연결
+5. channel / approval binding 설정
+6. cron 또는 recurring automation 등록
 
-## 디자인 원칙
-
-이 저장소의 non-negotiable은 아래와 같습니다.
-
-- daily digest generation을 freeform live web search에 의존하게 만들지 않는다
-- LLM은 deterministic retrieval 아래가 아니라 그 위의 optional layer로 둔다
-- non-LLM fallback path를 항상 남긴다
-- original evidence와 scoring context를 보존한다
-- official source를 commentary보다 우선한다
-- filler보다 silence를 선택한다
-
-## 문서 가이드
-
-처음 읽는 순서는 아래를 추천합니다.
+## 추천 문서 순서
 
 1. [`ARCHITECTURE.md`](./ARCHITECTURE.md)
 2. [`news-bot/README.md`](./news-bot/README.md)
 3. [`docs/generated/db-schema.md`](./docs/generated/db-schema.md)
-4. [`docs/product-specs/llm-assisted-digest.md`](./docs/product-specs/llm-assisted-digest.md)
+4. [`docs/design-docs/openclaw-personal-control-plane.md`](./docs/design-docs/openclaw-personal-control-plane.md)
 5. [`docs/product-specs/discord-personal-control-plane.md`](./docs/product-specs/discord-personal-control-plane.md)
-6. [`docs/product-specs/telegram-news-followup-and-research.md`](./docs/product-specs/telegram-news-followup-and-research.md)
-7. [`docs/design-docs/openclaw-personal-control-plane.md`](./docs/design-docs/openclaw-personal-control-plane.md)
-
-현재 진행 중인 작업은 [`docs/exec-plans/active/`](./docs/exec-plans/active) 아래에 있습니다.
-
-## 컨트리뷰팅
-
-기여할 때의 가장 짧고 정확한 mental model은 이렇습니다.
-
-- `news-bot/`은 product engine
-- `skills/`와 `workspace-template/`은 operating interface
-- `docs/`는 future contributor를 위한 durable memory
-
-의미 있는 architecture change라면 아래를 함께 갱신해야 합니다.
-
-1. [`ARCHITECTURE.md`](./ARCHITECTURE.md)
-2. 관련 execution plan 문서
-3. schema가 바뀌었다면 [`docs/generated/db-schema.md`](./docs/generated/db-schema.md)
-4. ranking, rendering, follow-up behavior 테스트
-
-추천 검증 명령:
-
-```bash
-pnpm --dir ./news-bot test
-pnpm --dir ./news-bot digest -- --profile tech --mode am
-pnpm --dir ./news-bot digest -- --profile finance --mode am
-```
+6. [`docs/product-specs/llm-assisted-digest.md`](./docs/product-specs/llm-assisted-digest.md)
 
 ## 이 저장소가 잘 맞는 경우
 
-OpenSec는 아래와 잘 맞습니다.
+OpenSec는 다음과 같은 경우에 적합합니다.
 
-- 1인 소유자의 private AI news digest가 필요할 때
-- Discord를 primary front door로 쓰고 싶을 때
-- deterministic retrieval 위에 optional LLM explanation을 얹고 싶을 때
-- opaque agent behavior보다 preserved evidence를 중요하게 볼 때
-- product code와 operations scaffold를 한 repo에서 같이 관리하고 싶을 때
+- multi-tenant SaaS가 아니라 single-owner assistant system이 필요할 때
+- deterministic engine과 bounded LLM help를 같이 쓰고 싶을 때
+- 뉴스, 리서치, 코딩, 자동화를 한 workspace에서 다루고 싶을 때
+- opaque browsing-only agent보다 local state와 evidence를 더 중요하게 볼 때
+- public-safe repo와 private sibling assistant를 같이 운영하고 싶을 때
 
-아래와는 거리가 있습니다.
+반대로 이 저장소는 다음을 목표로 하지 않습니다.
 
-- fully autonomous browsing-first agent
-- multi-tenant SaaS productization
-- evidence trail 없는 model-only ranking
+- unconstrained autonomous browsing agent
+- general SaaS chatbot backend
+- persistent operational state가 없는 pure prompt-only system

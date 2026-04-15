@@ -2,249 +2,239 @@
 
 # OpenSec
 
-**A Discord-first personal control plane with deterministic multi-profile news briefs**
+**Single-owner personal AI assistant workspace for news, research, coding, and automation**
 
-Curated sources in. Ranked Korean digests out. Optional LLM enrichment on top of a local, evidence-preserving core. One visible coordinator on Discord, with execution, research, and memory-distillation lanes behind it.
+Deterministic engines where they matter. Bounded LLM help where it adds leverage. One workspace that can grow from a news brief into a real personal control plane.
 
-[Korean README](./README_KR.md) • [Architecture](./ARCHITECTURE.md) • [Product Engine](./news-bot/README.md) • [DB Schema](./docs/generated/db-schema.md)
+[Korean README](./README_KR.md) • [Architecture](./ARCHITECTURE.md) • [News Engine](./news-bot/README.md) • [DB Schema](./docs/generated/db-schema.md)
 
 </div>
 
-## Why OpenSec
+## What OpenSec Is
 
-OpenSec is built around a simple rule:
+OpenSec is not just a news bot.
 
-> The daily digest should come from deterministic retrieval and scoring, not from unconstrained model browsing.
+It is a public-safe foundation for a single-owner personal assistant system:
 
-That design choice gives the system a few properties that are easy to lose in AI-heavy products:
+- `news-bot/` gives you deterministic news and signal pipelines
+- `skills/` gives OpenClaw structured entry points for news, repo work, coding, memory, and system tasks
+- `workspace-template/` gives you a long-lived personal workspace shape
+- `docs/` keeps the architecture, plans, and product memory durable
 
-- reproducible ranking
-- debuggable local state
-- preserved evidence and source attribution
-- safe non-LLM fallbacks
-- follow-up answers grounded in stored context
+The core idea is simple:
 
-If an LLM is available, it improves explanation quality. If it is not, the digest should still ship.
+> treat retrieval, state, and operations as first-class system components, not as side effects of one big prompt
 
-## Highlights
+That lets the repo support more than one use case:
 
-| Capability | What it means |
+- scheduled briefs
+- bounded follow-up research
+- repo and coding tasks
+- memory capture and distillation
+- small personal automations
+- future private sibling assistants, such as a training bot, without collapsing everything into one hidden prompt
+
+## The Stack
+
+Think of the system in three layers:
+
+| Layer | Role | Examples |
+| --- | --- | --- |
+| Front doors | Where you talk to the system | Discord, Telegram fallback, shell, Codex |
+| Workspace control plane | Routing, approvals, memory, skills, cron | OpenClaw workspace, `skills/`, `workspace-template/` |
+| Deterministic engines and scripts | Actual domain logic | `news-bot/`, watcher flows, repo scripts, future project engines |
+
+Practical interpretation:
+
+- OpenClaw is the always-on gateway and coordinator
+- Codex is a direct coding/operator surface against the same repo
+- this repository contains the engines, skills, scripts, and docs that make those surfaces useful
+
+## What You Can Do Today
+
+| Capability lane | What exists now |
 | --- | --- |
-| Deterministic daily digest | Curated sources, normalization, dedupe, SQLite state, explicit scoring |
-| Evidence preserved by default | Canonical URL, source labels, source links, and score reasons stay attached |
-| Multi-profile engine | Separate `tech` and `finance` profiles can share evidence but keep different digest context |
-| Discord-first control plane | Workspace assets target a private Discord server with one front door |
-| Plain-text digest output | Digest text stays channel-safe for Discord, Telegram, or shell delivery |
-| Optional LLM layer | Item enrichment, theme synthesis, ask-mode explanation, and opt-in research |
-| Daily memory loop | Discord conversations can be distilled into daily notes first, then promoted into curated long-term memory |
-| Private control plane support | Includes OpenClaw workspace assets for Discord-first operations and DM approvals |
+| Daily news brief | Deterministic `tech` and `finance` digests with SQLite state, scoring, resend suppression, and Korean rendering |
+| Follow-up Q&A | `expand N`, `show sources for N`, `today themes`, `ask <질문>`, `research <질문>` |
+| Repo and coding work | `code_ops`, `repo_ops`, and `system_ops` skill scaffolds for controlled remote execution |
+| Memory loop | Daily note capture and curated long-term memory flow through `workspace-template/` and `skills/memory_ops/` |
+| Specialized automation | Separate bounded runtimes such as the Xiaohongshu housing watcher |
+| Cost-aware LLM use | Task-tiered routing, usage telemetry, and budget controls in the news engine |
+| Safe extension path | New skills, scripts, and deterministic engines can be added without redesigning the whole system |
 
-## How It Works
-
-```mermaid
-flowchart LR
-    A["Curated sources"] --> B["Source adapters"]
-    B --> C["Normalize and canonicalize"]
-    C --> D["Deduplicate and merge"]
-    D --> E[("SQLite state")]
-    E --> F["Deterministic scoring"]
-    F --> G["Recent 72h suppression gate"]
-    G --> H["Digest shortlist"]
-    H --> I["Full-read evidence extraction"]
-    I --> J["Task router"]
-    J --> K["Tier 1: Grok fast reasoning"]
-    J --> L["Tier 2: GPT-4.1"]
-    J --> M["Tier 3: GPT-5.4 mini"]
-    K --> N["Structured enrichment or synthesis"]
-    L --> N
-    M --> O["Explicit research only"]
-    N --> P["Plain-text digest renderer"]
-    O --> Q["Research answer renderer"]
-    P --> R["Discord, Telegram, or shell output"]
-    E --> S["Stored follow-up context"]
-    E --> T["LLM run telemetry and cost history"]
-    T --> J
-    J --> U["Budget guard and fallback policy"]
-    S --> V["Deterministic follow-up"]
-    S --> W["Ask mode"]
-    S --> X["Research mode"]
-    U --> N
-    U --> O
-```
-
-The important boundary is the placement of the LLM layer:
-
-- retrieval stays deterministic
-- recent 72h duplicate suppression happens before section assembly
-- candidate generation stays bounded
-- enrichment happens downstream of scoring and evidence extraction
-- model selection is routed by task tier, not by ad hoc call-site choices
-- delivery still works when enrichment is unavailable
-
-## System Architecture
+## Mental Model
 
 ```mermaid
 flowchart TB
-    subgraph Sources["Curated inputs"]
-        S1["GeekNews RSS"]
-        S2["OpenAI News RSS"]
-        S3["GitHub Trending"]
+    U["You"]
+
+    subgraph Surfaces["User surfaces"]
+        D["Discord / DM"]
+        T["Telegram fallback"]
+        C["Codex"]
+        S["Shell / cron"]
     end
 
-    subgraph Engine["news-bot/"]
-        SA["src/sources/"]
-        U["src/util/"]
-        DB["src/db.ts + SQLite"]
-        SC["src/scoring.ts"]
-        SUP["72h suppression gate"]
-        EV["src/evidence/"]
-        DG["src/digest/"]
-        CM["src/commands/"]
-        TR["src/llm/taskRouter.ts"]
-        LLM["src/llm/ providers + prompts"]
-        TL["llm_runs telemetry + budget checks"]
+    subgraph Workspace["Personal workspace / control plane"]
+        O["OpenClaw coordinator"]
+        K["skills/"]
+        M["memory + notes"]
+        A["approval + routing policy"]
     end
 
-    subgraph Control["Discord / OpenClaw layer"]
-        SK["skills/"]
-        WS["workspace-template/"]
-        OC["OpenClaw orchestration"]
-        DC["Discord server + DM"]
+    subgraph Engines["Project engines and scripts"]
+        N["news-bot/"]
+        R["repo and coding workflows"]
+        W["watchers and automations"]
+        P["future private sibling assistants"]
     end
 
-    S1 --> SA
-    S2 --> SA
-    S3 --> SA
-    SA --> U
-    U --> DB
-    DB --> SC
-    SC --> SUP
-    SUP --> DG
-    SUP --> EV
-    EV --> TR
-    DB --> TR
-    TR --> LLM
-    LLM --> DG
-    LLM --> TL
-    TL --> TR
-    DB --> CM
-    DG --> CM
-    CM --> OC
-    SK --> OC
-    WS --> OC
-    OC --> DC
+    U --> D
+    U --> T
+    U --> C
+    U --> S
+
+    D --> O
+    T --> O
+    S --> O
+    C --> N
+    C --> R
+
+    O --> K
+    O --> M
+    O --> A
+
+    K --> N
+    K --> R
+    K --> W
+    K --> P
 ```
 
-## What Is Implemented Today
+The important point is that `news-bot/` is one engine inside a broader personal assistant shape.
 
-OpenSec already includes:
+## Design Stance
 
-- curated source ingestion
-- profile-aware digest generation for `tech` and `finance`
-- normalization, canonicalization, and deduplication
-- precision and early-warning sourcing layers
-- SQLite-backed local state
-- deterministic ranking and resend suppression
-- Korean digest rendering
-- digest follow-up commands over stored context
-- optional LLM item enrichment and theme synthesis
-- `ask` follow-ups over stored evidence
-- `research` follow-ups with bounded live search and cited links
-- OpenClaw workspace bootstrap assets for private Discord use
-- daily note capture and memory-distillation scaffolding for Discord conversations
+These are the repository-level design choices:
 
-Still planned or evolving:
+- deterministic retrieval before model enrichment
+- local state and evidence preserved in SQLite
+- non-LLM fallback must remain usable
+- one visible coordinator is better than many visible bots
+- skills and scripts should expose bounded actions instead of prompt-only magic
+- future private assistants should live beside this repo, not be smuggled into it
 
-- LLM rerank calibration
-- richer Discord thread delegation and standing orders
-- further VPS and automation hardening
+This is why the news system is structured the way it is:
 
-## Supported Sources
+- daily candidate discovery is deterministic
+- dedupe and resend suppression happen in the data layer
+- full-read article context is cached locally
+- LLM calls are routed by task tier
+- follow-up answers can reuse stored evidence instead of starting from zero
 
-The default adapters currently cover:
+The same philosophy also makes the repo usable for non-news work.
 
-`tech`
+## Why This Structure Scales
 
-- OpenAI News RSS
-- GitHub Trending
-- GeekNews
-- Techmeme
-- Hacker News
-- Bluesky watchlist signals
-  - early-warning only
-  - disabled by default
+OpenSec is meant to grow with the owner.
 
-`finance`
+Typical progression:
 
-- Federal Reserve press
-- SEC press
-- Treasury press
-- BLS releases
-  - CPI
-  - Jobs
-  - PPI
-  - ECI
-- major-company SEC filings
+1. Start with local digest generation.
+2. Add OpenClaw and a private Discord front door.
+3. Add repo and system skills for remote work.
+4. Add memory capture and daily distillation.
+5. Add more bounded automations or private sibling assistants.
 
-## Discord Operating Model
+Because the workspace, skills, engines, and docs are separated, new capabilities do not need to be bolted onto the news prompt itself.
 
-| Lane | Purpose | Typical requests |
-| --- | --- | --- |
-| `#assistant` | Front door for triage and lightweight help | general requests, routing, quick answers |
-| `#tech-brief` | Scheduled `tech` digest plus short follow-up | `expand 2`, `show sources for 2`, short `ask` |
-| `#finance-brief` | Scheduled `finance` digest plus short follow-up | macro summary, source lookup, short `ask` |
-| `#research` | Longer explanation and explicit live research | `research look deeper into item 2` |
-| `#coding` | Repo work, tests, and execution requests | `run tests`, `open a branch`, `fix this file` |
-| `DM` | Sensitive approvals and private escalations | approvals, secrets, private preferences |
+Examples of clean extension paths:
 
-For a solo private guild, it is reasonable to start with `requireMention: true` and later switch it to `false` once routing and permissions are stable.
-
-## Memory Loop
-
-OpenSec does not dump every Discord message straight into long-term memory.
-
-Instead, the workspace is set up to use a two-step memory flow:
-
-- raw or semi-structured notes go into `memory/YYYY-MM-DD.md`
-- stable preferences, durable facts, and recurring operating rules get curated into `MEMORY.md`
-
-Supporting assets live in:
-
-- [`skills/memory_ops/`](./skills/memory_ops)
-- [`scripts/ensure-daily-memory-note.sh`](./scripts/ensure-daily-memory-note.sh)
-- [`workspace-template/memory/README.md`](./workspace-template/memory/README.md)
-
-Heartbeat is still intentionally conservative. The current posture is "capture first, distill deliberately" rather than silently auto-promoting conversation fragments into durable memory.
-
-## Follow-up Modes
-
-| Mode | Example | Notes |
-| --- | --- | --- |
-| Deterministic | `openai only` | Filters the latest digest context to OpenAI-related items |
-| Deterministic | `repo radar` | Shows repo-oriented items from stored digest context |
-| Deterministic | `today themes` | Returns the latest stored theme bullets |
-| Deterministic | `expand 2` | Uses the latest stored digest only |
-| Deterministic | `show sources for 2` | Returns preserved evidence links |
-| Deterministic | `why important 2` | Explains score reasoning from saved context |
-| Ask | `ask summarize only today's OpenAI items` | Uses stored digest evidence, with LLM help when available |
-| Research | `research look deeper into item 2` | Explicit opt-in live research with cited links |
+- add a new deterministic engine under `projects/` or this repo
+- add a new skill under `skills/`
+- add a new bounded automation script under `scripts/`
+- add a private sibling workspace or private repo for a training bot, while keeping this public repo clean
 
 ## Repository Map
 
 | Path | Purpose |
 | --- | --- |
-| `news-bot/` | Product engine for ingestion, state, scoring, digest rendering, and follow-ups |
-| `skills/` | OpenClaw-facing workspace skills |
-| `docs/design-docs/` | Long-lived design beliefs and architecture notes |
-| `docs/product-specs/` | User-visible behavior specs |
-| `docs/exec-plans/` | Active and completed execution plans |
-| `docs/generated/` | Derived references such as the SQLite schema |
-| `scripts/` | Workspace bootstrap and operations scripts |
-| `workspace-template/` | Base personal workspace scaffold for OpenClaw |
+| `news-bot/` | Deterministic news engine with scoring, evidence, follow-up, LLM routing, and delivery-friendly rendering |
+| `skills/` | OpenClaw-facing skills for news, code, repo, memory, and system tasks |
+| `workspace-template/` | Base personal workspace scaffold, including memory files and operator documents |
+| `scripts/` | Workspace bootstrap, daily note helpers, VPS bootstrap, and other operational scripts |
+| `docs/design-docs/` | Long-lived system design notes |
+| `docs/product-specs/` | Product behavior and operating model specs |
+| `docs/exec-plans/` | Active and completed implementation plans |
+| `docs/generated/` | Derived references such as the database schema |
+
+## Current Engines And Lanes
+
+### 1. News engine
+
+`news-bot/` currently provides:
+
+- source adapters for curated feeds
+- normalization, canonicalization, and dedupe
+- SQLite-backed raw items, normalized items, digests, follow-up context, and telemetry
+- deterministic ranking
+- recent 72-hour resend suppression
+- full-read article or repo context extraction
+- Korean digest rendering
+- bounded LLM enrichment and research
+
+### 2. Workspace skills
+
+The current public workspace skills are:
+
+- [`skills/ai_news_brief/`](./skills/ai_news_brief/)
+- [`skills/code_ops/`](./skills/code_ops/)
+- [`skills/repo_ops/`](./skills/repo_ops/)
+- [`skills/memory_ops/`](./skills/memory_ops/)
+- [`skills/system_ops/`](./skills/system_ops/)
+
+These are intentionally simple, explicit entry points. The goal is to make remote execution understandable and auditable.
+
+### 3. Memory loop
+
+The memory model is deliberately conservative:
+
+- raw daily notes go into `memory/YYYY-MM-DD.md`
+- stable preferences and durable operating facts go into `MEMORY.md`
+
+OpenSec does not assume every conversation should become long-term memory.
+
+### 4. Private extensions
+
+This public repo is designed to coexist with private siblings.
+
+For example:
+
+- a private training bot
+- private owner memory
+- private operational exports
+- private secrets and hidden rules
+
+Those should live in a separate private workspace or private repo, not inside OpenSec itself.
+
+## OpenClaw And Codex
+
+If you are using both OpenClaw and Codex, the clean boundary is:
+
+| Tool | Best use |
+| --- | --- |
+| OpenClaw | Always-on gateway, Discord/DM front door, approvals, cron, memory, tool orchestration |
+| Codex | Direct implementation work inside the repo, code edits, debugging, tests, documentation updates |
+| OpenSec repo | Shared system of record for deterministic logic, skills, scripts, and docs |
+
+That means:
+
+- you can run the repo locally with Codex and shell only
+- you can also mount the same repo under an OpenClaw workspace for always-on assistant behavior
+- you do not need to choose between "news bot" and "coding assistant"; the same workspace can support both
 
 ## Quick Start
 
-### 1. Run the news engine locally
+### 1. Run the deterministic engine locally
 
 ```bash
 cd ./news-bot
@@ -253,148 +243,63 @@ pnpm approve-builds
 cp .env.example .env
 pnpm test
 pnpm digest -- --profile tech --mode am
-pnpm digest -- --profile finance --mode am
 pnpm followup -- --profile tech "expand 1"
 ```
 
 If `pnpm approve-builds` prompts for native packages, approve `better-sqlite3` and `esbuild`.
 
-Useful local commands:
+### 2. Bootstrap the personal workspace
 
 ```bash
-pnpm --dir ./news-bot fetch
-pnpm --dir ./news-bot digest -- --profile tech --mode am
-pnpm --dir ./news-bot digest -- --profile tech --mode pm
-pnpm --dir ./news-bot digest -- --profile finance --mode am
-pnpm --dir ./news-bot digest -- --profile finance --mode pm
-pnpm --dir ./news-bot dry-run:am
-pnpm --dir ./news-bot dry-run:pm
-pnpm --dir ./news-bot followup -- --profile tech "openai only"
-pnpm --dir ./news-bot followup -- --profile tech "repo radar"
-pnpm --dir ./news-bot followup -- --profile tech "today themes"
-pnpm --dir ./news-bot followup -- --profile tech "show sources for 2"
-pnpm --dir ./news-bot followup -- --profile tech "ask summarize today's OpenAI items"
-pnpm --dir ./news-bot followup -- --profile finance "ask summarize today's macro items"
-pnpm --dir ./news-bot followup -- --profile tech "research look deeper into item 2"
+bash ./scripts/setup-personal-workspace.sh
 ```
 
-### 2. Configure environment variables
+That sets up the base workspace shape used by OpenClaw:
 
-For local CLI use, the defaults are enough to get started.
+- operator documents
+- memory files
+- public skills
+- expected project layout
 
-For real Discord and OpenClaw delivery, fill in:
-
-- your Discord bot token in the OpenClaw config
-- your Discord server and channel IDs in the OpenClaw config
-- your owner Discord user ID for allowlists and DM approvals
-
-Telegram variables are only needed if you keep Telegram as a fallback delivery surface:
-
-- `NEWS_BOT_TELEGRAM_USER_ID`
-- `TELEGRAM_BOT_TOKEN`
-
-Optional LLM variables:
-
-- `OPENAI_API_KEY`
-- `NEWS_BOT_DEFAULT_PROFILE`
-- `NEWS_BOT_LLM_ENABLED`
-- `NEWS_BOT_LLM_THEMES_ENABLED`
-- `NEWS_BOT_LLM_MODEL_SUMMARY`
-- `NEWS_BOT_LLM_MODEL_THEMES`
-- `NEWS_BOT_LLM_MODEL_RESEARCH`
-
-### 3. Turn it into a private Discord control plane
-
-This repository also ships the assets needed to run OpenSec inside a private OpenClaw workspace.
+### 3. Attach it to OpenClaw
 
 Key files:
 
 - [`openclaw.personal.example.jsonc`](./openclaw.personal.example.jsonc)
 - [`scripts/setup-personal-workspace.sh`](./scripts/setup-personal-workspace.sh)
 - [`scripts/ensure-daily-memory-note.sh`](./scripts/ensure-daily-memory-note.sh)
-- [`workspace-template/`](./workspace-template)
-- [`skills/ai_news_brief/`](./skills/ai_news_brief)
-- [`skills/code_ops/`](./skills/code_ops)
-- [`skills/memory_ops/`](./skills/memory_ops)
-- [`skills/repo_ops/`](./skills/repo_ops)
-- [`skills/system_ops/`](./skills/system_ops)
-
-Bootstrap the workspace with:
-
-```bash
-bash ./scripts/setup-personal-workspace.sh
-```
+- [`workspace-template/`](./workspace-template/)
 
 Then:
 
 1. copy the example OpenClaw config
-2. fill in your Discord bot token, server ID, channel IDs, and owner ID
+2. fill in your Discord or Telegram credentials
 3. start the OpenClaw gateway
-4. bind Discord to the main agent with `openclaw agents bind --agent main --bind discord`
-5. point OpenClaw at the personal workspace that includes these skills
-6. install the Discord cron jobs for `#tech-brief` and `#finance-brief`
-7. scaffold the first daily note with `bash ./scripts/ensure-daily-memory-note.sh`
+4. point it at the personal workspace
+5. bind channels and approvals
+6. install cron jobs or recurring automations
 
-## Design Principles
-
-The non-negotiables for this repository are straightforward:
-
-- do not make daily digest generation depend on freeform live web search
-- keep LLMs downstream of deterministic retrieval
-- always preserve a non-LLM fallback path
-- preserve original evidence and scoring context
-- prefer official sources over commentary
-- silence is better than filler
-
-## Documentation Guide
-
-Recommended reading order:
+## Suggested Reading Order
 
 1. [`ARCHITECTURE.md`](./ARCHITECTURE.md)
 2. [`news-bot/README.md`](./news-bot/README.md)
 3. [`docs/generated/db-schema.md`](./docs/generated/db-schema.md)
-4. [`docs/product-specs/llm-assisted-digest.md`](./docs/product-specs/llm-assisted-digest.md)
+4. [`docs/design-docs/openclaw-personal-control-plane.md`](./docs/design-docs/openclaw-personal-control-plane.md)
 5. [`docs/product-specs/discord-personal-control-plane.md`](./docs/product-specs/discord-personal-control-plane.md)
-6. [`docs/product-specs/telegram-news-followup-and-research.md`](./docs/product-specs/telegram-news-followup-and-research.md)
-7. [`docs/design-docs/openclaw-personal-control-plane.md`](./docs/design-docs/openclaw-personal-control-plane.md)
-
-Current execution work lives under [`docs/exec-plans/active/`](./docs/exec-plans/active).
-
-## Contributing
-
-If you want to contribute, this is the shortest accurate mental model:
-
-- `news-bot/` is the product engine
-- `skills/` and `workspace-template/` are the operating interface
-- `docs/` is the durable memory for future contributors
-
-For meaningful architecture changes, update all of the following:
-
-1. [`ARCHITECTURE.md`](./ARCHITECTURE.md)
-2. the relevant plan under [`docs/exec-plans/active/`](./docs/exec-plans/active)
-3. [`docs/generated/db-schema.md`](./docs/generated/db-schema.md) if schema changed
-4. tests for ranking, rendering, or follow-up behavior
-
-Recommended validation:
-
-```bash
-pnpm --dir ./news-bot test
-pnpm --dir ./news-bot digest -- --profile tech --mode am
-pnpm --dir ./news-bot digest -- --profile finance --mode am
-```
+6. [`docs/product-specs/llm-assisted-digest.md`](./docs/product-specs/llm-assisted-digest.md)
 
 ## Who This Repo Is For
 
-OpenSec is a strong fit if you want:
+OpenSec is a fit if you want:
 
-- a private AI news digest for one owner
-- Discord as the front door
-- deterministic retrieval with optional LLM explanation
-- preserved source evidence instead of opaque agent behavior
-- a repo that doubles as both product code and operations scaffold
+- a single-owner assistant system, not a multi-tenant SaaS
+- deterministic engines plus bounded LLM help
+- one workspace that can cover news, research, coding, and automation
+- direct evidence and local state instead of opaque browsing-only behavior
+- a public-safe repo that can sit next to private sibling assistants
 
-It is not optimized for:
+It is not trying to be:
 
-- fully autonomous browsing-first agents
-- multi-tenant SaaS productization
-- model-only ranking with no stored evidence trail
+- an unconstrained autonomous browsing agent
+- a general SaaS chatbot backend
+- a pure prompt-only system with no persistent operational state
