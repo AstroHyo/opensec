@@ -61,6 +61,7 @@ OpenSec는 단순한 뉴스 봇 저장소가 아닙니다.
 | Memory loop | `workspace-template/`와 `skills/memory_ops/` 기반의 daily note + curated memory 흐름 |
 | Specialized automation | Xiaohongshu housing watcher 같은 별도 bounded runtime |
 | Cost-aware LLM use | task-tiered routing, usage telemetry, budget control |
+| Global token audit | OpenClaw session 전역 + direct app `llm_runs`를 하나의 ledger로 수집 |
 | Safe extension path | 새 skill, script, deterministic engine을 시스템을 깨지 않고 추가 가능 |
 
 ## Mental Model

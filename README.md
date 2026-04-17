@@ -60,6 +60,7 @@ Practical interpretation:
 | Memory loop | Daily note capture and curated long-term memory flow through `workspace-template/` and `skills/memory_ops/` |
 | Specialized automation | Separate bounded runtimes such as the Xiaohongshu housing watcher |
 | Cost-aware LLM use | Task-tiered routing, usage telemetry, and budget controls in the news engine |
+| Global token audit | One ledger that collects OpenClaw-wide session usage plus direct app `llm_runs` |
 | Safe extension path | New skills, scripts, and deterministic engines can be added without redesigning the whole system |
 
 ## Mental Model

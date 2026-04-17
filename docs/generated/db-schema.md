@@ -265,6 +265,20 @@ Links early-warning signals onto existing normalized items.
 - `boost_score`
 - `created_at`
 
+## Separate Control-Plane Ledger
+
+This repo now also ships a separate OpenClaw-wide token ledger.
+
+- schema reference: [`./openclaw-token-ledger-schema.md`](./openclaw-token-ledger-schema.md)
+- default runtime DB path: `~/.openclaw/telemetry/token-usage.sqlite`
+
+This ledger is intentionally outside the `news-bot` SQLite file because it needs to cover:
+
+- `main`, `training`, and any future OpenClaw agent
+- chat and cron sessions
+- hidden or fallback sessions
+- direct app-level `llm_runs` imports such as `news-bot`
+
 ### `housing_watch_runs`
 
 Stores each Xiaohongshu watcher execution.

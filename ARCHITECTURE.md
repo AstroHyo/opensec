@@ -20,6 +20,30 @@ This repository has two layers:
 
 OpenClaw is still an external orchestrator. This repo does not implement OpenClaw itself.
 
+## Runtime Token Telemetry
+
+OpenClaw remains external, but this repo now assumes a sidecar telemetry layer for usage audit.
+
+The intended shape is:
+
+```text
+OpenClaw session JSONL
+  -> incremental sidecar collector
+  -> central token ledger SQLite
+  -> reporting / audit
+
+Direct app llm_runs (for example news-bot)
+  -> incremental sidecar collector
+  -> same central token ledger SQLite
+```
+
+Rules:
+
+- session JSONL is the source of truth for OpenClaw-routed usage
+- app-level `llm_runs` tables cover direct API calls outside OpenClaw sessions
+- the token ledger lives outside repo-tracked app DBs so one report can cover `main`, `training`, and future agents together
+- collection should be incremental and cheap enough to run every minute
+
 ## Core Boundaries
 
 The deterministic boundary remains unchanged:
@@ -35,6 +59,7 @@ The control-plane boundary is now broader:
 - Telegram may remain as a fallback or legacy channel
 - one visible coordinator is preferred over many visible bots
 - specialist work should happen through delegation, threads, or hidden subagents
+- runtime-wide token telemetry should be collected in one central ledger, not scattered per subsystem
 
 ## Component Layout
 
