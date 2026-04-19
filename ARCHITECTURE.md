@@ -466,9 +466,9 @@ When enabled, heartbeat must stay low-noise and non-mutating.
 
 - `AGENTS.md`
 - `docs/design-docs/openclaw-personal-control-plane.md`
-- `docs/exec-plans/active/2026-04-08-discord-personal-control-plane-v1-1.md`
-- `docs/exec-plans/active/2026-04-08-training-bot-private-workspace-rollout.md`
-- `docs/exec-plans/active/2026-04-10-xiaohongshu-sf-rent-watcher.md`
+- `docs/exec-plans/completed/2026-04-08-discord-personal-control-plane-v1-1.md`
+- `docs/exec-plans/completed/2026-04-08-training-bot-private-workspace-rollout.md`
+- `docs/exec-plans/completed/2026-04-10-xiaohongshu-sf-rent-watcher.md`
 - `docs/product-specs/discord-personal-control-plane.md`
 - `docs/product-specs/training-bot-private-workspace.md`
 - `docs/generated/db-schema.md`

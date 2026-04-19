@@ -8,17 +8,20 @@ Execution plans live under `docs/exec-plans/`.
 
 Current active plan:
 
-- [`./exec-plans/active/2026-04-02-llm-curation-upgrade.md`](./exec-plans/active/2026-04-02-llm-curation-upgrade.md)
-- [`./exec-plans/active/2026-04-02-vps-openclaw-rollout.md`](./exec-plans/active/2026-04-02-vps-openclaw-rollout.md)
-- [`./exec-plans/active/2026-04-02-aws-ec2-c7i-flex-large-rollout.md`](./exec-plans/active/2026-04-02-aws-ec2-c7i-flex-large-rollout.md)
-- [`./exec-plans/active/2026-04-03-telegram-news-followup-and-research.md`](./exec-plans/active/2026-04-03-telegram-news-followup-and-research.md)
-- [`./exec-plans/active/2026-04-05-sourcing-expansion-precision-and-early-warning.md`](./exec-plans/active/2026-04-05-sourcing-expansion-precision-and-early-warning.md)
-- [`./exec-plans/active/2026-04-08-discord-personal-control-plane-v1-1.md`](./exec-plans/active/2026-04-08-discord-personal-control-plane-v1-1.md)
-- [`./exec-plans/active/2026-04-08-discord-memory-capture-and-distillation.md`](./exec-plans/active/2026-04-08-discord-memory-capture-and-distillation.md)
-- [`./exec-plans/active/2026-04-08-training-bot-private-workspace-rollout.md`](./exec-plans/active/2026-04-08-training-bot-private-workspace-rollout.md)
-- [`./exec-plans/active/2026-04-10-xiaohongshu-sf-rent-watcher.md`](./exec-plans/active/2026-04-10-xiaohongshu-sf-rent-watcher.md)
-- [`./exec-plans/active/2026-04-14-tech-brief-insight-overhaul.md`](./exec-plans/active/2026-04-14-tech-brief-insight-overhaul.md)
-- [`./exec-plans/active/2026-04-14-three-day-dedupe-and-tiered-model-routing.md`](./exec-plans/active/2026-04-14-three-day-dedupe-and-tiered-model-routing.md)
+- [`./exec-plans/active/2026-04-15-finance-brief-overhaul-and-tiered-routing.md`](./exec-plans/active/2026-04-15-finance-brief-overhaul-and-tiered-routing.md)
+
+Plan hygiene rules:
+
+- `active/` should contain only work with a real remaining execution step
+- active plans should start with:
+  - `Live status`
+  - `Next step`
+  - `Owner`
+- once the shipped behavior is documented elsewhere, move the plan to `completed/` instead of letting `active/` turn into a history dump
+
+Archive:
+
+- shipped plans live under [`./exec-plans/completed/`](./exec-plans/completed/)
 
 Rule of thumb:
 

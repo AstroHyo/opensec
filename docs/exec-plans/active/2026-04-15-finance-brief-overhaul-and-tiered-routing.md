@@ -1,5 +1,11 @@
 # 2026-04-15 Finance Brief Overhaul And Tiered Routing
 
+## Plan Status
+
+- Live status: partially shipped. Finance source taxonomy, profile routing, structured fields, and finance-aware rendering exist, but the brief still needs a tighter market-interpretation quality pass.
+- Next step: run a live AM/PM finance brief review, then tighten market-relevance gating and finance-specific fallback writing based on weak live items.
+- Owner: 승효님
+
 ## Why
 
 The current `finance` brief is structurally weak in a different way from the old `tech` brief.
